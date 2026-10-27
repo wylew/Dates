@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -38,6 +39,7 @@ import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.util.CustomFontEmojiView
+import com.wylew.dates.util.EmojiSearch
 import com.wylew.dates.util.FluentEmojiManager
 import com.wylew.dates.util.FluentEmojiView
 import com.wylew.dates.util.FontEmojiLoader
@@ -127,18 +129,8 @@ fun EmojiSearchDialog(
     }
 
     val filteredSystemEmojis = remember(searchQuery, selectedCategory) {
-        EmojiRepository.items.filter { item ->
-            val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
-            val matchesSearch = if (searchQuery.isBlank()) {
-                true
-            } else {
-                val queryLower = searchQuery.trim().lowercase()
-                item.name.lowercase().contains(queryLower) ||
-                        item.keywords.any { it.lowercase().contains(queryLower) } ||
-                        item.emoji.contains(queryLower)
-            }
-            matchesCategory && matchesSearch
-        }
+        val inCategory = EmojiRepository.items.filter { selectedCategory == "All" || it.category == selectedCategory }
+        EmojiSearch.rank(inCategory, searchQuery, name = { it.name }, keywords = { it.keywords }, emoji = { it.emoji })
     }
 
     // Fluent 3D
@@ -146,12 +138,7 @@ fun EmojiSearchDialog(
     val isFluentDownloaded = FluentEmojiManager.isPackDownloaded(context)
 
     val filteredFluentEmojis = remember(searchQuery, fluentDownloadedItems) {
-        if (searchQuery.isBlank()) {
-            fluentDownloadedItems
-        } else {
-            val queryLower = searchQuery.trim().lowercase()
-            fluentDownloadedItems.filter { it.name.lowercase().contains(queryLower) }
-        }
+        EmojiSearch.rank(fluentDownloadedItems, searchQuery, name = { it.name })
     }
 
     // Mona Font (loaded dynamically from TTF)
@@ -172,12 +159,7 @@ fun EmojiSearchDialog(
     val isOpenMojiDownloaded = OpenMojiManager.isPackDownloaded(context)
 
     val filteredOpenMoji = remember(searchQuery, openMojiDownloadedItems) {
-        if (searchQuery.isBlank()) {
-            openMojiDownloadedItems
-        } else {
-            val queryLower = searchQuery.trim().lowercase()
-            openMojiDownloadedItems.filter { it.name.lowercase().contains(queryLower) }
-        }
+        EmojiSearch.rank(openMojiDownloadedItems, searchQuery, name = { it.name })
     }
 
     // Segoe UI SVGs
@@ -185,16 +167,21 @@ fun EmojiSearchDialog(
     val segoeSvgEmojis = remember(isSegoeDownloaded) {
         if (isSegoeDownloaded) SegoeSvgManager.getDownloadedEmojis(context) else emptyList()
     }
-    val filteredSegoeEmojis = remember(searchQuery, segoeSvgEmojis) {
-        if (searchQuery.isBlank()) segoeSvgEmojis
-        else {
-            val queryLower = searchQuery.trim().lowercase()
-            segoeSvgEmojis.filter { item ->
-                item.name.lowercase().contains(queryLower) ||
-                        item.keywords.any { it.lowercase().contains(queryLower) }
-            }
+    var selectedSegoeCategory by remember { mutableStateOf("All") }
+    val segoeCategories = remember(segoeSvgEmojis) {
+        listOf("All") + SegoeSvgManager.categoriesFor(segoeSvgEmojis)
+    }
+    // Searching looks across every category; browsing filters by the selected chip.
+    val filteredSegoeEmojis = remember(searchQuery, selectedSegoeCategory, segoeSvgEmojis) {
+        if (searchQuery.isNotBlank()) {
+            EmojiSearch.rank(segoeSvgEmojis, searchQuery, name = { it.name }, keywords = { it.keywords }, emoji = { it.emoji })
+        } else if (selectedSegoeCategory == "All") {
+            segoeSvgEmojis
+        } else {
+            segoeSvgEmojis.filter { it.category == selectedSegoeCategory }
         }
     }
+    val showSegoeHeaders = searchQuery.isBlank() && selectedSegoeCategory == "All"
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -521,30 +508,80 @@ fun EmojiSearchDialog(
                                 )
                             )
 
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = 2.dp)
+                            ) {
+                                items(segoeCategories) { category ->
+                                    FilterChip(
+                                        selected = selectedSegoeCategory == category && searchQuery.isBlank(),
+                                        onClick = {
+                                            selectedSegoeCategory = category
+                                            searchQuery = ""
+                                        },
+                                        label = { Text(category, style = MaterialTheme.typography.labelSmall) },
+                                        shape = ExpressivePillShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        )
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 44.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(filteredSegoeEmojis) { item ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .clickable {
-                                                onEmojiSelected(null, item.filePath)
-                                                onDismissRequest()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        FluentEmojiView(
-                                            imageUri = item.filePath,
-                                            modifier = Modifier.size(36.dp)
-                                        )
+                            if (filteredSegoeEmojis.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "No emoji match \"${searchQuery.trim()}\"",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Adaptive(minSize = 52.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    filteredSegoeEmojis.forEachIndexed { index, item ->
+                                        if (showSegoeHeaders && (index == 0 || filteredSegoeEmojis[index - 1].category != item.category)) {
+                                            item(
+                                                key = "header-${item.category}",
+                                                span = { GridItemSpan(maxLineSpan) }
+                                            ) {
+                                                Text(
+                                                    text = item.category,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(top = if (index == 0) 0.dp else 8.dp, bottom = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        item(key = item.id) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                                    .clickable {
+                                                        onEmojiSelected(null, item.filePath)
+                                                        onDismissRequest()
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                FluentEmojiView(
+                                                    imageUri = item.filePath,
+                                                    modifier = Modifier.size(36.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

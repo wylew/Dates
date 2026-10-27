@@ -29,9 +29,7 @@ import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.ui.theme.ExpressiveSheetShape
 import com.wylew.dates.util.CalendarIntegrationHelper
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
+import com.wylew.dates.util.DateUtils
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -318,14 +316,15 @@ fun CalendarImportSheet(
                         ) {
                             items(calendarEvents, key = { it.id }) { ev ->
                                 val isSelected = selectedEventIds.contains(ev.id)
-                                val startDt = LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(ev.dtstart),
-                                    ZoneId.systemDefault()
-                                )
-                                val endDt = LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(ev.dtend),
-                                    ZoneId.systemDefault()
-                                )
+                                val startDt = CalendarIntegrationHelper.toLocal(ev.displayStart, ev.allDay)
+                                val endDt = CalendarIntegrationHelper.toLocal(ev.displayStart + ev.durationMillis, ev.allDay)
+                                val repeatLabel = remember(ev.id, ev.rrule, ev.displayStart) {
+                                    when {
+                                        !ev.isRecurring -> null
+                                        ev.seriesEnded -> "Series ended"
+                                        else -> DateUtils.describe(CalendarIntegrationHelper.parseRRule(ev.rrule, startDt))
+                                    }
+                                }
                                 val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
                                 val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
 
@@ -369,10 +368,15 @@ fun CalendarImportSheet(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            val dateStr = if (ev.allDay) {
+                                            val whenStr = if (ev.allDay) {
                                                 "${startDt.format(dateFormatter)} (All Day)"
                                             } else {
                                                 "${startDt.format(dateFormatter)} ${startDt.format(timeFormatter)} - ${endDt.format(timeFormatter)}"
+                                            }
+                                            val dateStr = when {
+                                                repeatLabel == null -> whenStr
+                                                ev.nextInstanceStart != null -> "Next: $whenStr · $repeatLabel"
+                                                else -> "$whenStr · $repeatLabel"
                                             }
                                             Text(
                                                 text = dateStr,
