@@ -209,14 +209,7 @@ fun EventDetailsSheet(
                             iconTint = accentColor,
                             labelColor = onSheetVariant,
                             valueColor = onSheetColor,
-                            value = when (event.recurrence) {
-                                is Recurrence.None -> "Does not repeat"
-                                is Recurrence.Daily -> "Daily"
-                                is Recurrence.Weekly -> "Weekly"
-                                is Recurrence.Monthly -> "Monthly"
-                                is Recurrence.Yearly -> "Yearly"
-                                is Recurrence.Custom -> "Custom repetition"
-                            }
+                            value = DateUtils.describe(event.recurrence)
                         )
                     }
                 }

@@ -211,8 +211,8 @@ object EmojiLibraries {
                 id = it.file,
                 name = it.name,
                 category = it.category,
-                keywords = withCurated(it.emoji, it.keywords),
-                emoji = it.emoji,
+                keywords = withCurated(it.emoji?.ifBlank { null }, it.keywords),
+                emoji = it.emoji?.ifBlank { null },
                 imageUri = uriFor(it.file),
                 tones = it.tones.map(uriFor)
             )

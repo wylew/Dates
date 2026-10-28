@@ -41,6 +41,7 @@ import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CustomFontEmojiView
 import com.wylew.dates.util.EmojiLibraries
 import com.wylew.dates.util.EmojiLibrary
+import com.wylew.dates.util.EmojiSearch
 import com.wylew.dates.util.FluentEmojiView
 import com.wylew.dates.util.LibraryEmoji
 import com.wylew.dates.util.MonaFontManager
@@ -193,15 +194,9 @@ fun EmojiSearchDialog(
     }
 }
 
-private fun filterEmojis(items: List<LibraryEmoji>, query: String): List<LibraryEmoji> {
-    val q = query.trim().lowercase()
-    if (q.isEmpty()) return items
-    return items.filter { item ->
-        item.name.lowercase().contains(q) ||
-                item.keywords.any { it.contains(q) } ||
-                item.emoji == query.trim()
-    }
-}
+// Ranked (whole word > prefix > substring); sections keep Unicode order when not searching
+private fun filterEmojis(items: List<LibraryEmoji>, query: String): List<LibraryEmoji> =
+    EmojiSearch.rank(items, query, name = { it.name }, keywords = { it.keywords }, emoji = { it.emoji.orEmpty() })
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

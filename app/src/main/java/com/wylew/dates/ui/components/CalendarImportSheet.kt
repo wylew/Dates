@@ -32,13 +32,11 @@ import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.ui.theme.ExpressiveSheetShape
 import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CalendarIntegrationHelper
+import com.wylew.dates.util.DateUtils
 import com.wylew.dates.util.EmojiLibraries
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -321,24 +319,30 @@ fun CalendarImportSheet(
                         ) {
                             itemsIndexed(calendarEvents, key = { _, ev -> ev.id }) { index, ev ->
                                 val isSelected = selectedEventIds.contains(ev.id)
-                                val startDt = LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(ev.dtstart),
-                                    ZoneId.systemDefault()
-                                )
-                                val endDt = LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(ev.dtend),
-                                    ZoneId.systemDefault()
-                                )
+                                val startDt = CalendarIntegrationHelper.toLocal(ev.displayStart, ev.allDay)
+                                val endDt = CalendarIntegrationHelper.toLocal(ev.displayStart + ev.durationMillis, ev.allDay)
+                                val repeatLabel = remember(ev.id, ev.rrule, ev.displayStart) {
+                                    when {
+                                        !ev.isRecurring -> null
+                                        ev.seriesEnded -> "Series ended"
+                                        else -> DateUtils.describe(CalendarIntegrationHelper.parseRRule(ev.rrule, startDt))
+                                    }
+                                }
                                 val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
                                 val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
 
                                 val toggle = {
                                     selectedEventIds = if (isSelected) selectedEventIds - ev.id else selectedEventIds + ev.id
                                 }
-                                val dateStr = if (ev.allDay) {
+                                val whenStr = if (ev.allDay) {
                                     "${startDt.format(dateFormatter)} (All Day)"
                                 } else {
                                     "${startDt.format(dateFormatter)} ${startDt.format(timeFormatter)} - ${endDt.format(timeFormatter)}"
+                                }
+                                val dateStr = when {
+                                    repeatLabel == null -> whenStr
+                                    ev.nextInstanceStart != null -> "Next: $whenStr · $repeatLabel"
+                                    else -> "$whenStr · $repeatLabel"
                                 }
                                 ListItem(
                                     selected = isSelected,
