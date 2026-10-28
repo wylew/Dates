@@ -62,7 +62,7 @@ private val PresetColors = listOf(
     Color(0xFFF50057)  // Bold Magenta
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AddEventSheet(
     eventToEdit: DateEvent? = null,
@@ -89,7 +89,10 @@ fun AddEventSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
+        ),
         shape = ExpressiveSheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = { BottomSheetDefaults.DragHandle() }
@@ -329,7 +332,7 @@ fun AddEventSheet(
                             if (patternEmojis.size < 3) {
                                 OutlinedButton(
                                     onClick = { showPatternEmojiPicker = true },
-                                    shape = ExpressivePillShape,
+                                    shapes = ButtonDefaults.shapes(),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text("+ Add Emoji")
@@ -360,22 +363,17 @@ fun AddEventSheet(
                 )
             }
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 4.dp)
+            // Expressive button group: pressed items widen, extras collapse into an overflow menu
+            ButtonGroup(
+                overflowIndicator = { menuState -> ButtonGroupDefaults.OverflowIndicator(menuState) },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                items(recurrenceOptions) { (label, recurrence) ->
-                    val isSelected = selectedRecurrence::class == recurrence::class
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedRecurrence = recurrence },
-                        label = { Text(label) },
-                        shape = ExpressivePillShape,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
+                recurrenceOptions.forEach { (label, recurrence) ->
+                    toggleableItem(
+                        checked = selectedRecurrence::class == recurrence::class,
+                        label = label,
+                        onCheckedChange = { selectedRecurrence = recurrence },
+                        weight = 1f
                     )
                 }
             }
@@ -506,13 +504,10 @@ fun AddEventSheet(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .heightIn(min = ButtonDefaults.MediumContainerHeight),
                 enabled = title.isNotBlank(),
-                shape = ExpressivePillShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                shapes = ButtonDefaults.shapes(),
+                contentPadding = ButtonDefaults.MediumContentPadding
             ) {
                 Text(
                     text = if (eventToEdit == null) "Create Countdown" else "Save Changes",

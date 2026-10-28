@@ -8,5 +8,7 @@ object WidgetUpdater {
         DateEventsWidget().updateAll(context)
         NextEventWidget().updateAll(context)
         SelectedEventWidget().updateAll(context)
+        NextEventSquareWidget().updateAll(context)
+        SelectedEventSquareWidget().updateAll(context)
     }
 }

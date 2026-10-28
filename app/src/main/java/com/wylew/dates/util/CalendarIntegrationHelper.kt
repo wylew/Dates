@@ -10,6 +10,7 @@ import com.wylew.dates.model.Recurrence
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import kotlin.random.Random
 
 object CalendarIntegrationHelper {
     data class SystemCalendar(
@@ -191,7 +192,7 @@ object CalendarIntegrationHelper {
         }
     }
 
-    fun convertToDateEvent(sysEvent: SystemCalendarEvent, calendarColor: Int): DateEvent {
+    fun convertToDateEvent(sysEvent: SystemCalendarEvent): DateEvent {
         val startDateTime = LocalDateTime.ofInstant(
             Instant.ofEpochMilli(sysEvent.dtstart),
             ZoneId.systemDefault()
@@ -209,7 +210,11 @@ object CalendarIntegrationHelper {
             isAllDay = sysEvent.allDay,
             recurrence = recurrence,
             emoji = "📅",
-            customColor = Color(calendarColor)
+            customColor = randomEventColor()
         )
     }
+
+    // Bright, saturated color with a random hue so imported events aren't all the calendar's color
+    private fun randomEventColor(): Color =
+        Color.hsv(hue = Random.nextFloat() * 360f, saturation = 0.85f, value = 0.9f)
 }

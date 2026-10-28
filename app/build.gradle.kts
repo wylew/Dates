@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.wylew.dates"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.wylew.dates"

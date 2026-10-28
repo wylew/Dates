@@ -8,7 +8,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -28,12 +30,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
@@ -44,6 +48,7 @@ import com.wylew.dates.util.FontEmojiLoader
 import com.wylew.dates.util.MonaFontManager
 import com.wylew.dates.util.OpenMojiManager
 import com.wylew.dates.util.SegoeSvgManager
+import kotlinx.coroutines.launch
 
 data class EmojiItem(
     val emoji: String,
@@ -195,9 +200,24 @@ fun EmojiSearchDialog(
             }
         }
     }
+    // groupBy keeps metadata order, so sections follow the Unicode emoji groups
+    val segoeSections = remember(filteredSegoeEmojis) { filteredSegoeEmojis.groupBy { it.category } }
+    val segoeHeaderIndexes = remember(segoeSections) {
+        var index = 0
+        segoeSections.mapValues { (_, items) -> index.also { index += items.size + 1 } }
+    }
+    val segoeGridState = rememberLazyGridState()
+    val currentSegoeSection by remember(segoeHeaderIndexes) {
+        derivedStateOf {
+            segoeHeaderIndexes.entries.lastOrNull { it.value <= segoeGridState.firstVisibleItemIndex }?.key
+        }
+    }
+    val scope = rememberCoroutineScope()
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
+        modifier = Modifier.fillMaxWidth(0.94f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         shape = ExpressiveCompactCardShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         confirmButton = {},
@@ -270,7 +290,7 @@ fun EmojiSearchDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(360.dp)
+                    .height((LocalConfiguration.current.screenHeightDp * 0.6f).dp)
             ) {
                 when (selectedTab) {
                     0 -> {
@@ -523,28 +543,65 @@ fun EmojiSearchDialog(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = 2.dp)
+                            ) {
+                                items(segoeSections.keys.toList()) { category ->
+                                    FilterChip(
+                                        selected = currentSegoeSection == category,
+                                        onClick = {
+                                            scope.launch { segoeGridState.animateScrollToItem(segoeHeaderIndexes.getValue(category)) }
+                                        },
+                                        label = { Text(category, style = MaterialTheme.typography.labelSmall) },
+                                        shape = ExpressivePillShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        )
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
                             LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 44.dp),
+                                columns = GridCells.Adaptive(minSize = 52.dp),
+                                state = segoeGridState,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(filteredSegoeEmojis) { item ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .clickable {
-                                                onEmojiSelected(null, item.filePath)
-                                                onDismissRequest()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        FluentEmojiView(
-                                            imageUri = item.filePath,
-                                            modifier = Modifier.size(36.dp)
+                                segoeSections.forEach { (category, sectionItems) ->
+                                    item(key = "header:$category", span = { GridItemSpan(maxLineSpan) }) {
+                                        Text(
+                                            text = category,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
                                         )
+                                    }
+                                    items(sectionItems, key = { it.id }) { item ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                                .clickable {
+                                                    onEmojiSelected(null, item.filePath)
+                                                    onDismissRequest()
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            FluentEmojiView(
+                                                imageUri = item.filePath,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

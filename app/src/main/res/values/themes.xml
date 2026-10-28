@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
+    <!-- Light window theme; values-night supplies the dark variant so the window and
+         splash match the system before Compose draws -->
     <style name="Theme.Dates" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

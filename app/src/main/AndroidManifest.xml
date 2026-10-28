@@ -18,6 +18,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Dates">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -61,6 +62,30 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/app_widget_selected_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.NextEventSquareWidgetReceiver"
+            android:exported="true"
+            android:label="Next Date (Square)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/app_widget_next_square_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.SelectedEventSquareWidgetReceiver"
+            android:exported="true"
+            android:label="Selected Date (Square)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/app_widget_selected_square_info" />
         </receiver>
 
         <activity

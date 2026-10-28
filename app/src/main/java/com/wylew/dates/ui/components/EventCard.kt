@@ -5,7 +5,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -22,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -35,14 +35,13 @@ import com.wylew.dates.model.DateEvent
 import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
+import com.wylew.dates.ui.ListDensity
+import com.wylew.dates.ui.theme.accentShadeOf
 import com.wylew.dates.util.CustomFontEmojiView
 import com.wylew.dates.util.DateUtils
+import com.wylew.dates.util.EmojiPatternRenderer
 import com.wylew.dates.util.FluentEmojiView
 import com.wylew.dates.util.MonaFontManager
-import com.caverock.androidsvg.SVG
-import java.io.File
-import java.time.Duration
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -50,14 +49,16 @@ fun EventCard(
     event: DateEvent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isCompact: Boolean = false
+    density: ListDensity = ListDensity.EXPANDED,
+    shape: Shape = if (density == ListDensity.EXPANDED) ExpressiveCardShape else ExpressiveCompactCardShape
 ) {
+    val isCompact = density != ListDensity.EXPANDED
+    val isSmall = density == ListDensity.SMALL
     val nextOccurrence = DateUtils.getNextOccurrence(event)
     val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM dd, yyyy")
-    
-    val now = LocalDateTime.now()
-    val duration = Duration.between(now, nextOccurrence)
-    val daysLeft = maxOf(0L, duration.toDays())
+
+    val daysLeft = DateUtils.daysUntil(event)
+    val daysPast = DateUtils.daysPast(event)
 
     // Interaction state for press scaling feedback
     val interactionSource = remember { MutableInteractionSource() }
@@ -92,23 +93,11 @@ fun EventCard(
         }
     }
 
-    val defaultBadgeContainer = MaterialTheme.colorScheme.primaryContainer
-    val defaultBadgeContent = MaterialTheme.colorScheme.onPrimaryContainer
-
-    val badgeContainerColor = remember(cardColor, contentColor, defaultBadgeContainer, event.customColor, event.autoColor) {
-        if (event.customColor != null || event.autoColor != null) {
-            contentColor.copy(alpha = 0.15f)
-        } else {
-            defaultBadgeContainer
-        }
-    }
-
-    val badgeContentColor = remember(cardColor, contentColor, defaultBadgeContent, event.customColor, event.autoColor) {
-        if (event.customColor != null || event.autoColor != null) {
-            contentColor
-        } else {
-            defaultBadgeContent
-        }
+    // Emoji and countdown bubbles: a shade of the event color, or a faint tint on uncolored cards
+    val bubbleColor = if (event.customColor != null || event.autoColor != null) {
+        accentShadeOf(cardColor)
+    } else {
+        contentColor.copy(alpha = 0.12f)
     }
 
     val gradientBrush = remember(cardColor) {
@@ -131,7 +120,7 @@ fun EventCard(
                     stiffness = Spring.StiffnessMedium
                 )
             ),
-        shape = if (isCompact) ExpressiveCompactCardShape else ExpressiveCardShape,
+        shape = shape,
         color = Color.Transparent,
         contentColor = contentColor,
         tonalElevation = if (event.customColor != null) 0.dp else if (isCompact) 2.dp else 4.dp,
@@ -146,169 +135,24 @@ fun EventCard(
         ) {
             // Emoji Pattern Matrix Overlay (Tighter, horizontal/gentle angle, honoring custom font database)
             if (event.useEmojiPattern && event.patternEmojis.isNotEmpty()) {
-                val context = LocalContext.current
-                val fontFile = remember(event.imageUri) {
-                    when (event.imageUri) {
-                        "font:mona" -> MonaFontManager.getFontFile(context)
-                        else -> if (event.imageUri?.startsWith("/") == true) File(event.imageUri) else null
-                    }
-                }
-
-                val patternBitmaps = remember(event.patternEmojis) {
-                    val density = context.resources.displayMetrics.density
-                    val sizePx = (28 * density).toInt()
-
-                    event.patternEmojis.map { em ->
-                        if (em.startsWith("/") || em.startsWith("file:") || em.startsWith("asset:")) {
-                            try {
-                                var loadedBitmap: android.graphics.Bitmap? = null
-
-                                fun getStream(): java.io.InputStream? {
-                                    return when {
-                                        em.startsWith("file:///android_asset/") -> {
-                                            val path = em.removePrefix("file:///android_asset/")
-                                            context.assets.open(path)
-                                        }
-                                        em.startsWith("asset:///") || em.startsWith("asset://") -> {
-                                            val path = em.removePrefix("asset:///").removePrefix("asset://")
-                                            context.assets.open(path)
-                                        }
-                                        em.startsWith("file:") -> {
-                                            val uri = java.net.URI(em)
-                                            val file = File(uri)
-                                            if (file.exists()) file.inputStream() else null
-                                        }
-                                        em.startsWith("/") -> {
-                                            val file = File(em)
-                                            if (file.exists()) file.inputStream() else null
-                                        }
-                                        else -> null
-                                    }
-                                }
-
-                                // Try SVG first
-                                try {
-                                    getStream()?.use { inputStream ->
-                                        val svg = SVG.getFromInputStream(inputStream)
-                                        val b = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
-                                        val c = android.graphics.Canvas(b)
-                                        val renderBounds = android.graphics.RectF(0f, 0f, sizePx.toFloat(), sizePx.toFloat())
-                                        svg.setDocumentWidth(sizePx.toFloat())
-                                        svg.setDocumentHeight(sizePx.toFloat())
-                                        svg.renderToCanvas(c, renderBounds)
-                                        loadedBitmap = b
-                                    }
-                                } catch (_: Exception) {
-                                    // Fallback to raster decode (PNG/JPG/WEBP)
-                                    try {
-                                        getStream()?.use { inputStream ->
-                                            val options = android.graphics.BitmapFactory.Options().apply {
-                                                inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
-                                            }
-                                            val srcBitmap = android.graphics.BitmapFactory.decodeStream(inputStream, null, options)
-                                            if (srcBitmap != null) {
-                                                val scaled = android.graphics.Bitmap.createScaledBitmap(srcBitmap, sizePx, sizePx, true)
-                                                if (scaled != srcBitmap) {
-                                                    srcBitmap.recycle()
-                                                }
-                                                loadedBitmap = scaled
-                                            }
-                                        }
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                                loadedBitmap
-                            } catch (_: Exception) {
-                                null
-                            }
-                        } else null
-                    }
-                }
-
-                val density = LocalDensity.current
-                val paint = remember(fontFile, density, contentColor) {
-                    val fontSizePx = with(density) { 22.sp.toPx() }
-                    android.graphics.Paint().apply {
-                        textSize = fontSizePx
-                        isAntiAlias = true
-                        color = contentColor.toArgb()
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        alpha = (0.35f * 255).toInt()
-                        if (fontFile != null && fontFile.exists() && fontFile.length() > 0L) {
-                            try {
-                                typeface = android.graphics.Typeface.createFromFile(fontFile)
-                            } catch (_: Exception) {
-                            }
-                        }
-                    }
-                }
-
-                val bPaint = remember {
-                    android.graphics.Paint().apply {
-                        alpha = (0.35f * 255).toInt()
-                        isAntiAlias = true
-                        isFilterBitmap = true
-                    }
-                }
-
-                Canvas(modifier = Modifier.matchParentSize()) {
-                    drawIntoCanvas { canvas ->
-                        val nativeCanvas = canvas.nativeCanvas
-                        nativeCanvas.save()
-
-                        val cx = size.width / 2f
-                        val cy = size.height / 2f
-                        nativeCanvas.rotate(15f, cx, cy)
-
-                        val spacingX = 40.dp.toPx()
-                        val spacingY = 44.dp.toPx()
-                        val textOffsetY = (paint.descent() - paint.ascent()) / 3f
-
-                        val startX = -size.width
-                        val endX = size.width * 2f
-                        val startY = -size.height
-                        val endY = size.height * 2f
-
-                        var row = 0
-                        var y = startY
-                        while (y < endY) {
-                            var col = 0
-                            val offsetX = if (row % 2 == 1) spacingX / 2f else 0f
-                            var x = startX + offsetX
-
-                            while (x < endX) {
-                                val patternIndex = (row + col) % event.patternEmojis.size
-                                val em = event.patternEmojis[patternIndex]
-                                val bitmap = patternBitmaps[patternIndex]
-
-                                if (bitmap != null) {
-                                    nativeCanvas.drawBitmap(bitmap, x - bitmap.width / 2f, y - bitmap.height / 2f, bPaint)
-                                } else if (!em.startsWith("/") && !em.startsWith("file:") && !em.startsWith("asset:")) {
-                                    nativeCanvas.drawText(em, x, y + textOffsetY, paint)
-                                }
-
-                                col++
-                                x += spacingX
-                            }
-                            row++
-                            y += spacingY
-                        }
-                        nativeCanvas.restore()
-                    }
-                }
+                EmojiPatternBackground(event, contentColor, Modifier.matchParentSize())
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(if (isCompact) 10.dp else 14.dp),
+                    .padding(
+                        horizontal = if (isSmall) 10.dp else if (isCompact) 10.dp else 14.dp,
+                        vertical = if (isSmall) 6.dp else if (isCompact) 10.dp else 14.dp
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Hero Icon / Emoji Tonal Container
+                val emojiFontSize = if (isSmall) 24f else if (isCompact) 34f else 45f
                 Box(
                     modifier = Modifier
-                        .size(if (isCompact) 56.dp else 74.dp)
+                        .size(if (isSmall) 40.dp else if (isCompact) 56.dp else 74.dp)
                         .clip(CircleShape)
-                        .background(contentColor.copy(alpha = 0.12f)),
+                        .background(bubbleColor),
                     contentAlignment = Alignment.Center
                 ) {
                     val context = LocalContext.current
@@ -317,7 +161,7 @@ fun EventCard(
                             emoji = event.emoji ?: "🎂",
                             fontFile = MonaFontManager.getFontFile(context),
                             modifier = Modifier.fillMaxSize(),
-                            fontSizeSp = if (isCompact) 34f else 45f
+                            fontSizeSp = emojiFontSize
                         )
                     } else if (event.imageUri != null) {
                         FluentEmojiView(
@@ -329,14 +173,14 @@ fun EventCard(
                     } else if (event.emoji != null) {
                         Text(
                             text = event.emoji,
-                            fontSize = if (isCompact) 34.sp else 45.sp
+                            fontSize = emojiFontSize.sp
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.width(if (isCompact) 10.dp else 14.dp))
 
-                // Title and Date Column
+                // Title and Date Column (Small drops the date)
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
@@ -348,61 +192,110 @@ fun EventCard(
                         overflow = TextOverflow.Ellipsis,
                         color = contentColor
                     )
-                    Spacer(modifier = Modifier.height(1.dp))
-                    Text(
-                        text = nextOccurrence.format(dateFormatter),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.75f)
-                    )
+                    if (!isSmall) {
+                        Spacer(modifier = Modifier.height(1.dp))
+                        Text(
+                            text = nextOccurrence.format(dateFormatter),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.75f)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
 
-                // Expressive Countdown Pill Badge
-                Surface(
-                    shape = ExpressivePillShape,
-                    color = badgeContainerColor,
-                    contentColor = badgeContentColor,
-                    border = BorderStroke(1.5.dp, badgeContentColor.copy(alpha = 0.35f)),
-                    modifier = Modifier.defaultMinSize(minWidth = if (isCompact) 46.dp else 56.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(
-                            horizontal = if (isCompact) 8.dp else 11.dp,
-                            vertical = if (isCompact) 4.dp else 6.dp
-                        )
+                if (isSmall) {
+                    // Single-line countdown pill keeps Small rows thin
+                    Box(
+                        modifier = Modifier
+                            .clip(ExpressivePillShape)
+                            .background(bubbleColor)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        if (daysLeft > 0) {
-                            Text(
-                                text = daysLeft.toString(),
-                                style = if (isCompact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                textAlign = TextAlign.Center,
-                                lineHeight = if (isCompact) 16.sp else 22.sp
-                            )
-                            Text(
-                                text = if (daysLeft == 1L) "day" else "days",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                textAlign = TextAlign.Center,
-                                color = badgeContentColor.copy(alpha = 0.8f)
-                            )
-                        } else {
-                            Text(
-                                text = "TODAY",
-                                style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                textAlign = TextAlign.Center,
-                                color = badgeContentColor
-                            )
+                        Text(
+                            text = when {
+                                daysPast != null -> if (daysPast == 1L) "1 day ago" else "$daysPast days ago"
+                                daysLeft > 0 -> if (daysLeft == 1L) "1 day" else "$daysLeft days"
+                                else -> "Today"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            color = contentColor
+                        )
+                    }
+                } else {
+                    // Countdown in the same tonal bubble as the emoji
+                    Box(
+                        modifier = Modifier
+                            .size(if (isSmall) 40.dp else if (isCompact) 56.dp else 74.dp)
+                            .clip(CircleShape)
+                            .background(bubbleColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            val count = daysPast ?: daysLeft
+                            if (count > 0) {
+                                Text(
+                                    text = count.toString(),
+                                    style = if (isCompact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = if (isCompact) 16.sp else 22.sp
+                                )
+                                Text(
+                                    text = when {
+                                        daysPast != null -> if (count == 1L) "day ago" else "days ago"
+                                        else -> if (count == 1L) "day" else "days"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                    color = contentColor.copy(alpha = 0.8f)
+                                )
+                            } else {
+                                Text(
+                                    text = "TODAY",
+                                    style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    textAlign = TextAlign.Center,
+                                    color = contentColor
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+
+// Tiled, rotated emoji pattern used behind event cards and the details sheet
+@Composable
+fun EmojiPatternBackground(event: DateEvent, contentColor: Color, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val pxPerDp = LocalDensity.current.density
+    val emojiBitmaps = remember(event.patternEmojis, pxPerDp) {
+        EmojiPatternRenderer.loadEmojiBitmaps(context, event.patternEmojis, pxPerDp)
+    }
+    val textPaint = remember(event.imageUri, pxPerDp, contentColor) {
+        EmojiPatternRenderer.createTextPaint(context, event, pxPerDp, contentColor.toArgb())
+    }
+    val bitmapPaint = remember { EmojiPatternRenderer.createBitmapPaint() }
+
+    Canvas(modifier = modifier) {
+        drawIntoCanvas { canvas ->
+            EmojiPatternRenderer.draw(
+                canvas.nativeCanvas, size.width, size.height, pxPerDp,
+                event.patternEmojis, emojiBitmaps, textPaint, bitmapPaint
+            )
         }
     }
 }

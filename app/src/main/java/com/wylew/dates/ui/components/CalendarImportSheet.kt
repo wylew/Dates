@@ -8,7 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,16 +25,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.wylew.dates.model.DateEvent
+import com.wylew.dates.model.Recurrence
 import com.wylew.dates.ui.theme.ExpressiveCardShape
+import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.ui.theme.ExpressiveSheetShape
 import com.wylew.dates.util.CalendarIntegrationHelper
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CalendarImportSheet(
     onDismiss: () -> Unit,
@@ -61,6 +64,22 @@ fun CalendarImportSheet(
     var calendarEvents by remember { mutableStateOf<List<CalendarIntegrationHelper.SystemCalendarEvent>>(emptyList()) }
     var selectedEventIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var isLoadingEvents by remember { mutableStateOf(false) }
+    // Set when some chosen events are past one-offs; holds the rest awaiting confirmation
+    var pendingImport by remember { mutableStateOf<List<DateEvent>?>(null) }
+    var skippedPastCount by remember { mutableIntStateOf(0) }
+
+    fun requestImport(sysEvents: List<CalendarIntegrationHelper.SystemCalendarEvent>) {
+        val today = LocalDate.now()
+        val (pastOneOffs, toImport) = sysEvents
+            .map { CalendarIntegrationHelper.convertToDateEvent(it) }
+            .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
+        if (pastOneOffs.isEmpty()) {
+            onImportEvents(toImport)
+        } else {
+            skippedPastCount = pastOneOffs.size
+            pendingImport = toImport
+        }
+    }
 
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
@@ -99,7 +118,7 @@ fun CalendarImportSheet(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (selectedCalendar != null) {
-                        IconButton(onClick = { selectedCalendar = null }) {
+                        IconButton(onClick = { selectedCalendar = null }, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to calendars")
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -154,7 +173,7 @@ fun CalendarImportSheet(
                                 onClick = {
                                     permissionLauncher.launch(Manifest.permission.READ_CALENDAR)
                                 },
-                                shape = ExpressivePillShape
+                                shapes = ButtonDefaults.shapes()
                             ) {
                                 Text("Grant Permission")
                             }
@@ -188,50 +207,30 @@ fun CalendarImportSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
                     ) {
-                        items(calendars, key = { it.id }) { cal ->
-                            Surface(
-                                shape = ExpressiveCardShape,
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedCalendar = cal }
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .padding(16.dp)
-                                        .fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        itemsIndexed(calendars, key = { _, cal -> cal.id }) { index, cal ->
+                            ListItem(
+                                onClick = { selectedCalendar = cal },
+                                shapes = ListItemDefaults.segmentedShapes(index, calendars.size),
+                                colors = ListItemDefaults.segmentedColors(),
+                                leadingContent = {
                                     Box(
                                         modifier = Modifier
                                             .size(36.dp)
                                             .clip(CircleShape)
                                             .background(Color(cal.color))
                                     )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = cal.displayName,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = cal.accountName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                },
+                                supportingContent = { Text(cal.accountName) }
+                            ) {
+                                Text(cal.displayName)
                             }
                         }
                     }
                 }
             } else {
                 // Events List State
-                val calColor = selectedCalendar!!.color
                 if (isLoadingEvents) {
                     Box(
                         modifier = Modifier
@@ -239,7 +238,7 @@ fun CalendarImportSheet(
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        LoadingIndicator()
                     }
                 } else if (calendarEvents.isEmpty()) {
                     Box(
@@ -291,21 +290,14 @@ fun CalendarImportSheet(
                         // Bulk Import All Button
                         Button(
                             onClick = {
-                                val dateEvents = calendarEvents.map {
-                                    CalendarIntegrationHelper.convertToDateEvent(it, calColor)
-                                }
-                                onImportEvents(dateEvents)
+                                requestImport(calendarEvents)
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = ExpressivePillShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
+                            shapes = ButtonDefaults.shapes()
                         ) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Import All (${calendarEvents.size} Events)", style = MaterialTheme.typography.titleSmall)
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                            Text("Import All (${calendarEvents.size} Events)")
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -314,9 +306,9 @@ fun CalendarImportSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
                         ) {
-                            items(calendarEvents, key = { it.id }) { ev ->
+                            itemsIndexed(calendarEvents, key = { _, ev -> ev.id }) { index, ev ->
                                 val isSelected = selectedEventIds.contains(ev.id)
                                 val startDt = LocalDateTime.ofInstant(
                                     Instant.ofEpochMilli(ev.dtstart),
@@ -329,68 +321,32 @@ fun CalendarImportSheet(
                                 val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
                                 val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
 
-                                Surface(
-                                    shape = ExpressiveCardShape,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                            else MaterialTheme.colorScheme.surfaceContainer,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            selectedEventIds = if (isSelected) {
-                                                selectedEventIds - ev.id
-                                            } else {
-                                                selectedEventIds + ev.id
-                                            }
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .padding(12.dp)
-                                            .fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = isSelected,
-                                            onCheckedChange = { checked ->
-                                                selectedEventIds = if (checked) {
-                                                    selectedEventIds + ev.id
-                                                } else {
-                                                    selectedEventIds - ev.id
-                                                }
-                                            }
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = ev.title,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            val dateStr = if (ev.allDay) {
-                                                "${startDt.format(dateFormatter)} (All Day)"
-                                            } else {
-                                                "${startDt.format(dateFormatter)} ${startDt.format(timeFormatter)} - ${endDt.format(timeFormatter)}"
-                                            }
-                                            Text(
-                                                text = dateStr,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                val toggle = {
+                                    selectedEventIds = if (isSelected) selectedEventIds - ev.id else selectedEventIds + ev.id
+                                }
+                                val dateStr = if (ev.allDay) {
+                                    "${startDt.format(dateFormatter)} (All Day)"
+                                } else {
+                                    "${startDt.format(dateFormatter)} ${startDt.format(timeFormatter)} - ${endDt.format(timeFormatter)}"
+                                }
+                                ListItem(
+                                    selected = isSelected,
+                                    onClick = toggle,
+                                    shapes = ListItemDefaults.segmentedShapes(index, calendarEvents.size),
+                                    colors = ListItemDefaults.segmentedColors(),
+                                    leadingContent = {
+                                        Checkbox(checked = isSelected, onCheckedChange = { toggle() })
+                                    },
+                                    supportingContent = {
+                                        Column {
+                                            Text(dateStr)
                                             if (ev.description.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = ev.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
+                                                Text(ev.description, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
                                         }
                                     }
+                                ) {
+                                    Text(ev.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -400,20 +356,50 @@ fun CalendarImportSheet(
                         // Import Selected Button
                         Button(
                             onClick = {
-                                val eventsToImport = calendarEvents
-                                    .filter { selectedEventIds.contains(it.id) }
-                                    .map { CalendarIntegrationHelper.convertToDateEvent(it, calColor) }
-                                onImportEvents(eventsToImport)
+                                requestImport(calendarEvents.filter { selectedEventIds.contains(it.id) })
                             },
                             enabled = selectedEventIds.isNotEmpty(),
                             modifier = Modifier.fillMaxWidth(),
-                            shape = ExpressivePillShape
+                            shapes = ButtonDefaults.shapes()
                         ) {
-                            Text("Import Selected (${selectedEventIds.size} Events)", style = MaterialTheme.typography.titleSmall)
+                            Text("Import Selected (${selectedEventIds.size} Events)")
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingImport?.let { remaining ->
+        val skippedLabel = if (skippedPastCount == 1) "1 event has" else "$skippedPastCount events have"
+        AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            shape = ExpressiveCompactCardShape,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            title = { Text("Skip past events?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    if (remaining.isEmpty()) {
+                        "$skippedLabel already happened and won't repeat, so there's nothing to import."
+                    } else {
+                        "$skippedLabel already happened and won't repeat, so they'll be skipped. " +
+                            "Import the remaining ${remaining.size}?"
+                    }
+                )
+            },
+            confirmButton = {
+                if (remaining.isEmpty()) {
+                    TextButton(onClick = { pendingImport = null }) { Text("OK") }
+                } else {
+                    TextButton(onClick = {
+                        pendingImport = null
+                        onImportEvents(remaining)
+                    }) { Text("Import ${remaining.size}") }
+                }
+            },
+            dismissButton = if (remaining.isEmpty()) null else {
+                { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
+            }
+        )
     }
 }

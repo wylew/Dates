@@ -27,16 +27,23 @@ enum class SortCriterion {
     ALPHA, NEXT_OCCURRENCE
 }
 
+enum class ListDensity {
+    EXPANDED, COMPACT, SMALL
+}
+
 class DateViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DateEventRepository(application)
 
     private val _sortCriterion = MutableStateFlow(SortCriterion.NEXT_OCCURRENCE)
     val sortCriterion: StateFlow<SortCriterion> = _sortCriterion.asStateFlow()
 
+    // Upcoming events first, then past one-time events (most recent first when sorting by date)
     val events: StateFlow<List<DateEvent>> = combine(repository.events, _sortCriterion) { eventList, criterion ->
+        val (past, upcoming) = eventList.partition(DateUtils::isPast)
         when (criterion) {
-            SortCriterion.ALPHA -> eventList.sortedBy { it.title }
-            SortCriterion.NEXT_OCCURRENCE -> eventList.sortedBy { DateUtils.getNextOccurrence(it) }
+            SortCriterion.ALPHA -> upcoming.sortedBy { it.title } + past.sortedBy { it.title }
+            SortCriterion.NEXT_OCCURRENCE ->
+                upcoming.sortedBy { DateUtils.getNextOccurrence(it) } + past.sortedByDescending { it.dateTime }
         }
     }.stateIn(
         scope = viewModelScope,
@@ -44,8 +51,8 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
-    private val _isCompactMode = MutableStateFlow(true)
-    val isCompactMode: StateFlow<Boolean> = _isCompactMode.asStateFlow()
+    private val _listDensity = MutableStateFlow(ListDensity.COMPACT)
+    val listDensity: StateFlow<ListDensity> = _listDensity.asStateFlow()
 
     private val _themeMode = MutableStateFlow(ThemeMode.SYSTEM)
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -145,7 +152,14 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setCompactMode(enabled: Boolean) {
-        _isCompactMode.value = enabled
+    fun setListDensity(density: ListDensity) {
+        _listDensity.value = density
+    }
+
+    fun deletePastEvents() {
+        viewModelScope.launch {
+            repository.saveEvents(events.value.filterNot(DateUtils::isPast))
+            WidgetUpdater.updateAllWidgets(getApplication())
+        }
     }
 }

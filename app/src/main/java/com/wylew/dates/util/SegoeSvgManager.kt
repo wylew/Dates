@@ -35,17 +35,19 @@ object SegoeSvgManager {
     }
 
     fun getDownloadedEmojis(context: Context): List<SegoeSvgItem> {
-        val metadataEntries = try {
+        // metadata.json is stored in Unicode emoji order, grouped by category
+        val metadataList = try {
             context.assets.open("$ASSET_DIR/metadata.json").use { inputStream ->
                 InputStreamReader(inputStream).use { reader ->
                     val jsonString = reader.readText()
-                    val entries: List<SvgMetadataEntry> = Json { ignoreUnknownKeys = true }.decodeFromString(jsonString)
-                    entries.associateBy { it.file }
+                    Json { ignoreUnknownKeys = true }.decodeFromString<List<SvgMetadataEntry>>(jsonString)
                 }
             }
         } catch (_: Exception) {
-            emptyMap()
+            emptyList()
         }
+        val metadataEntries = metadataList.associateBy { it.file }
+        val metadataOrder = metadataList.withIndex().associate { it.value.file to it.index }
 
         val assetFiles = try {
             context.assets.list(ASSET_DIR)?.filter { it.endsWith(".svg", ignoreCase = true) } ?: emptyList()
@@ -53,7 +55,7 @@ object SegoeSvgManager {
             emptyList()
         }
 
-        return assetFiles.sorted().map { fileName ->
+        return assetFiles.sortedWith(compareBy({ metadataOrder[it] ?: Int.MAX_VALUE }, { it })).map { fileName ->
             val metadata = metadataEntries[fileName]
             val cleanName = metadata?.name ?: fileName.removeSuffix(".svg").replace("-", " ").replace("_", " ")
             val category = metadata?.category ?: "Segoe Emojis"
