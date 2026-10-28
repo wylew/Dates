@@ -77,6 +77,10 @@ object EmojiLibraries {
 
     private fun indexByEmoji(context: Context) = index(context).associateBy { normalize(it.e) }
 
+    /** The first emoji in an event title and the title without it (see [TitleEmoji]), or null if there isn't a clean match */
+    fun emojiInTitle(context: Context, title: String): TitleEmoji.Match? =
+        TitleEmoji.extract(title, index(context).associate { normalize(it.e) to it.e })
+
     private fun withCurated(emoji: String?, keywords: List<String>): List<String> {
         val curated = emoji?.let { CuratedEmojiKeywords.byEmoji[it] ?: CuratedEmojiKeywords.byEmoji[normalize(it)] }
         return if (curated == null) keywords else (keywords + curated).distinct()

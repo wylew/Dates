@@ -35,6 +35,7 @@ import com.wylew.dates.util.CalendarIntegrationHelper
 import com.wylew.dates.util.DateUtils
 import com.wylew.dates.util.EmojiLibraries
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -70,23 +71,40 @@ fun CalendarImportSheet(
     var pendingImport by remember { mutableStateOf<List<DateEvent>?>(null) }
     var skippedPastCount by remember { mutableIntStateOf(0) }
 
-    // Imported dates get the calendar emoji in the default library's style
-    var importEmoji by remember { mutableStateOf<Pair<String, String?>>("📅" to null) }
-    LaunchedEffect(Unit) {
+    val scope = rememberCoroutineScope()
+
+    /**
+     * Imported dates use the first emoji in their title ("🎨 Arlen's Birthday" becomes 🎨 with the
+     * title "Arlen's Birthday"), drawn in the default library's style when it has that emoji (plain
+     * system emoji otherwise). Titles without a clean emoji get the calendar emoji in the default
+     * library's style.
+     */
+    suspend fun withImportEmoji(events: List<DateEvent>): List<DateEvent> {
         val library = AppSettings.currentDefaultEmojiLibrary(context)
-        importEmoji = withContext(Dispatchers.Default) { EmojiLibraries.resolve(context, library, "📅") }
+        val fallback = EmojiLibraries.resolve(context, library, "📅")
+        return events.map { event ->
+            val found = EmojiLibraries.emojiInTitle(context, event.title)
+            val (emoji, imageUri) = found
+                ?.let { EmojiLibraries.exactMatch(context, library, it.emoji) ?: (it.emoji to null) }
+                ?: fallback
+            event.copy(title = found?.title ?: event.title, emoji = emoji, imageUri = imageUri)
+        }
     }
 
     fun requestImport(sysEvents: List<CalendarIntegrationHelper.SystemCalendarEvent>) {
         val today = LocalDate.now()
-        val (pastOneOffs, toImport) = sysEvents
-            .map { CalendarIntegrationHelper.convertToDateEvent(it).copy(emoji = importEmoji.first, imageUri = importEmoji.second) }
-            .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
-        if (pastOneOffs.isEmpty()) {
-            onImportEvents(toImport)
-        } else {
-            skippedPastCount = pastOneOffs.size
-            pendingImport = toImport
+        scope.launch {
+            val converted = withContext(Dispatchers.Default) {
+                withImportEmoji(sysEvents.map { CalendarIntegrationHelper.convertToDateEvent(it) })
+            }
+            val (pastOneOffs, toImport) = converted
+                .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
+            if (pastOneOffs.isEmpty()) {
+                onImportEvents(toImport)
+            } else {
+                skippedPastCount = pastOneOffs.size
+                pendingImport = toImport
+            }
         }
     }
 
