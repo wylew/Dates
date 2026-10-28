@@ -1,13 +1,10 @@
 package com.wylew.dates.ui
 
 import android.app.Application
-import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wylew.dates.model.DateEvent
 import com.wylew.dates.model.DateEventRepository
-import com.wylew.dates.model.Frequency
-import com.wylew.dates.model.Recurrence
 import com.wylew.dates.util.DateUtils
 import com.wylew.dates.widget.WidgetUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK
@@ -67,53 +63,10 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            repository.events.collect { currentEvents ->
-                if (currentEvents.isEmpty()) {
-                    initializeSampleData()
-                }
+            repository.events.collect {
                 WidgetUpdater.updateAllWidgets(getApplication())
             }
         }
-    }
-
-    private suspend fun initializeSampleData() {
-        val now = LocalDateTime.now()
-        val sampleEvents = listOf(
-            DateEvent(
-                title = "Birthday",
-                dateTime = now.plusMonths(4),
-                recurrence = Recurrence.Yearly,
-                emoji = "🎂",
-                customColor = Color(0xFFF50057) // Bold Magenta
-            ),
-            DateEvent(
-                title = "Weekly Meeting",
-                dateTime = now.plusDays(2),
-                recurrence = Recurrence.Weekly,
-                emoji = "🤝",
-                customColor = Color(0xFF2979FF) // Deep Cobalt
-            ),
-            DateEvent(
-                title = "Monthly Rent",
-                dateTime = now.plusDays(5),
-                recurrence = Recurrence.Monthly,
-                emoji = "🏠",
-                customColor = Color(0xFFFF6D00) // Sunset Orange
-            ),
-            DateEvent(
-                title = "Tech Sync",
-                dateTime = now.plusDays(1),
-                recurrence = Recurrence.Custom(
-                    frequency = Frequency.MONTHLY,
-                    interval = 1,
-                    dayOfWeek = 4, // Thursday
-                    weekOfMonth = 1 // First
-                ),
-                emoji = "💻",
-                customColor = Color(0xFF00C853) // Emerald Green
-            )
-        )
-        repository.saveEvents(sampleEvents)
     }
 
     fun addEvent(event: DateEvent) {
