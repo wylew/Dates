@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wylew.dates.model.DateEvent
@@ -147,36 +148,12 @@ fun EventCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Hero Icon / Emoji Tonal Container
-                val emojiFontSize = if (isSmall) 24f else if (isCompact) 34f else 45f
-                Box(
-                    modifier = Modifier
-                        .size(if (isSmall) 40.dp else if (isCompact) 56.dp else 74.dp)
-                        .clip(CircleShape)
-                        .background(bubbleColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val context = LocalContext.current
-                    if (event.imageUri == "font:mona") {
-                        CustomFontEmojiView(
-                            emoji = event.emoji ?: "🎂",
-                            fontFile = MonaFontManager.getFontFile(context),
-                            modifier = Modifier.fillMaxSize(),
-                            fontSizeSp = emojiFontSize
-                        )
-                    } else if (event.imageUri != null) {
-                        FluentEmojiView(
-                            imageUri = event.imageUri,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(if (isCompact) 2.dp else 4.dp)
-                        )
-                    } else if (event.emoji != null) {
-                        Text(
-                            text = event.emoji,
-                            fontSize = emojiFontSize.sp
-                        )
-                    }
-                }
+                EmojiInCircle(
+                    emoji = event.emoji,
+                    imageUri = event.imageUri,
+                    size = if (isSmall) 40.dp else if (isCompact) 56.dp else 74.dp,
+                    background = bubbleColor
+                )
 
                 Spacer(modifier = Modifier.width(if (isCompact) 10.dp else 14.dp))
 
@@ -276,6 +253,40 @@ fun EventCard(
     }
 }
 
+
+// Share of a circle's diameter a square fits in without its corners being clipped (1/√2, with margin)
+private const val CIRCLE_CONTENT_FRACTION = 0.68f
+
+/**
+ * An event's emoji (image, Mona font, or plain text) centered in a circle and sized to sit inside
+ * it, so square image corners aren't shaved off.
+ */
+@Composable
+fun EmojiInCircle(emoji: String?, imageUri: String?, size: Dp, background: Color, fallback: String = "📅") {
+    val content = size * CIRCLE_CONTENT_FRACTION
+    val density = LocalDensity.current
+    // Emoji glyphs are drawn slightly larger than their font size. Converting from dp cancels the
+    // system font scale, so large text settings can't push the emoji past the circle's edge.
+    val fontSize = with(density) { (content * 0.82f).toSp() }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(background),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            imageUri == "font:mona" -> CustomFontEmojiView(
+                emoji = emoji ?: fallback,
+                fontFile = MonaFontManager.getFontFile(LocalContext.current),
+                modifier = Modifier.size(content),
+                fontSizeSp = fontSize.value
+            )
+            imageUri != null -> FluentEmojiView(imageUri = imageUri, modifier = Modifier.size(content))
+            else -> Text(text = emoji ?: fallback, fontSize = fontSize, lineHeight = fontSize)
+        }
+    }
+}
 
 // Tiled, rotated emoji pattern used behind event cards and the details sheet
 @Composable

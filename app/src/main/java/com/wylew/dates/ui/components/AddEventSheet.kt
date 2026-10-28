@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -42,9 +43,13 @@ import com.wylew.dates.model.Recurrence
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.ui.theme.ExpressiveSheetShape
+import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CustomFontEmojiView
+import com.wylew.dates.util.EmojiLibraries
 import com.wylew.dates.util.FluentEmojiView
 import com.wylew.dates.util.MonaFontManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -73,6 +78,20 @@ fun AddEventSheet(
     var description by remember { mutableStateOf(eventToEdit?.description ?: "") }
     var emoji by remember { mutableStateOf<String?>(eventToEdit?.emoji ?: if (eventToEdit?.imageUri == null) "📅" else null) }
     var imageUri by remember { mutableStateOf(eventToEdit?.imageUri) }
+    val context = LocalContext.current
+    // New dates start with the calendar emoji in the default library's style
+    if (eventToEdit == null) {
+        LaunchedEffect(Unit) {
+            val library = AppSettings.currentDefaultEmojiLibrary(context)
+            val (defaultEmoji, defaultUri) = withContext(Dispatchers.Default) {
+                EmojiLibraries.resolve(context, library, "📅")
+            }
+            if (emoji == "📅" && imageUri == null) {
+                emoji = defaultEmoji
+                imageUri = defaultUri
+            }
+        }
+    }
     var selectedDateTime by remember { mutableStateOf(eventToEdit?.dateTime ?: LocalDateTime.now()) }
     var isAllDay by remember { mutableStateOf(eventToEdit?.isAllDay ?: false) }
     var useEmojiPattern by remember { mutableStateOf(eventToEdit?.useEmojiPattern ?: false) }
@@ -363,18 +382,26 @@ fun AddEventSheet(
                 )
             }
 
-            // Expressive button group: pressed items widen, extras collapse into an overflow menu
-            ButtonGroup(
-                overflowIndicator = { menuState -> ButtonGroupDefaults.OverflowIndicator(menuState) },
-                modifier = Modifier.fillMaxWidth()
+            // Expressive toggle buttons sized to their labels; scrolls sideways if they don't fit.
+            // (ButtonGroup's overflow measuring crashes under fillMaxWidth in material3 1.5.0-beta02.)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
             ) {
-                recurrenceOptions.forEach { (label, recurrence) ->
-                    toggleableItem(
+                recurrenceOptions.forEachIndexed { index, (label, recurrence) ->
+                    ToggleButton(
                         checked = selectedRecurrence::class == recurrence::class,
-                        label = label,
                         onCheckedChange = { selectedRecurrence = recurrence },
-                        weight = 1f
-                    )
+                        shapes = when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            recurrenceOptions.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        }
+                    ) {
+                        Text(label, maxLines = 1)
+                    }
                 }
             }
 
@@ -567,7 +594,8 @@ fun AddEventSheet(
         EmojiSearchDialog(
             onDismissRequest = { showPatternEmojiPicker = false },
             onEmojiSelected = { selectedEmoji, selectedImageUri ->
-                val chosen = selectedImageUri ?: selectedEmoji
+                // Font emojis are drawn from their character, not the "font:mona" marker
+                val chosen = if (selectedImageUri == "font:mona") selectedEmoji else selectedImageUri ?: selectedEmoji
                 if (chosen != null && patternEmojis.size < 3) {
                     patternEmojis = patternEmojis + chosen
                 }

@@ -44,11 +44,16 @@ import com.wylew.dates.ui.SortCriterion
 import com.wylew.dates.ui.ThemeMode
 import com.wylew.dates.ui.components.AddEventSheet
 import com.wylew.dates.ui.components.CalendarImportSheet
+import com.wylew.dates.ui.components.EmojiLibraryManagerSheet
 import com.wylew.dates.ui.components.EventCard
 import com.wylew.dates.ui.components.EventDetailsSheet
 import com.wylew.dates.ui.components.ViewOptionsMenu
 import com.wylew.dates.ui.theme.DatesTheme
 import com.wylew.dates.util.DateUtils
+import com.wylew.dates.util.FluentEmojiManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import com.wylew.dates.ui.theme.ExpressiveCardShape
 
 class MainActivity : ComponentActivity() {
@@ -75,6 +80,7 @@ class MainActivity : ComponentActivity() {
             .crossfade(true)
             .build()
         Coil.setImageLoader(animatedImageLoader)
+        lifecycleScope.launch(Dispatchers.IO) { FluentEmojiManager.deleteLegacyCopies(applicationContext) }
 
         enableEdgeToEdge()
         setContent {
@@ -116,6 +122,7 @@ class MainActivity : ComponentActivity() {
 
                 var showMenu by remember { mutableStateOf(false) }
                 var showDeletePastConfirm by remember { mutableStateOf(false) }
+                var showEmojiLibraries by remember { mutableStateOf(false) }
                 val pastEvents = remember(events) { events.filter(DateUtils::isPast) }
                 var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
                 BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
@@ -153,6 +160,7 @@ class MainActivity : ComponentActivity() {
                                         onListDensity = viewModel::setListDensity,
                                         pastEventCount = pastEvents.size,
                                         onDeletePastEvents = { showDeletePastConfirm = true },
+                                        onOpenEmojiLibraries = { showEmojiLibraries = true },
                                         themeMode = themeMode,
                                         onThemeMode = viewModel::setThemeMode
                                     )
@@ -329,6 +337,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
+
+                    if (showEmojiLibraries) {
+                        EmojiLibraryManagerSheet(onDismiss = { showEmojiLibraries = false })
                     }
 
                     if (showDeletePastConfirm) {

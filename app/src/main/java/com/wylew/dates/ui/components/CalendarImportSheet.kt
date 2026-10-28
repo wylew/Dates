@@ -30,7 +30,11 @@ import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
 import com.wylew.dates.ui.theme.ExpressiveSheetShape
+import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CalendarIntegrationHelper
+import com.wylew.dates.util.EmojiLibraries
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -68,10 +72,17 @@ fun CalendarImportSheet(
     var pendingImport by remember { mutableStateOf<List<DateEvent>?>(null) }
     var skippedPastCount by remember { mutableIntStateOf(0) }
 
+    // Imported dates get the calendar emoji in the default library's style
+    var importEmoji by remember { mutableStateOf<Pair<String, String?>>("📅" to null) }
+    LaunchedEffect(Unit) {
+        val library = AppSettings.currentDefaultEmojiLibrary(context)
+        importEmoji = withContext(Dispatchers.Default) { EmojiLibraries.resolve(context, library, "📅") }
+    }
+
     fun requestImport(sysEvents: List<CalendarIntegrationHelper.SystemCalendarEvent>) {
         val today = LocalDate.now()
         val (pastOneOffs, toImport) = sysEvents
-            .map { CalendarIntegrationHelper.convertToDateEvent(it) }
+            .map { CalendarIntegrationHelper.convertToDateEvent(it).copy(emoji = importEmoji.first, imageUri = importEmoji.second) }
             .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
         if (pastOneOffs.isEmpty()) {
             onImportEvents(toImport)

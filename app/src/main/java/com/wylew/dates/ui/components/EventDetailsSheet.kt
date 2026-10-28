@@ -115,30 +115,12 @@ fun EventDetailsSheet(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Hero Emoji Badge
-                Box(
-                    modifier = Modifier
-                        .size(114.dp)
-                        .clip(CircleShape)
-                        .background(if (hasEventColor) accentContainer else heroColor.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val context = LocalContext.current
-                    if (event.imageUri == "font:mona") {
-                        CustomFontEmojiView(
-                            emoji = event.emoji ?: "🎂",
-                            fontFile = MonaFontManager.getFontFile(context),
-                            modifier = Modifier.fillMaxSize(),
-                            fontSizeSp = 54f
-                        )
-                    } else if (event.imageUri != null) {
-                        FluentEmojiView(
-                            imageUri = event.imageUri,
-                            modifier = Modifier.size(78.dp)
-                        )
-                    } else {
-                        Text(text = event.emoji ?: "📅", fontSize = 63.sp)
-                    }
-                }
+                EmojiInCircle(
+                    emoji = event.emoji,
+                    imageUri = event.imageUri,
+                    size = 114.dp,
+                    background = if (hasEventColor) accentContainer else heroColor.copy(alpha = 0.2f)
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 

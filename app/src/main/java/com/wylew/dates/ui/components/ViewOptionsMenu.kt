@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.SortByAlpha
@@ -46,7 +47,8 @@ fun ViewOptionsMenu(
     themeMode: ThemeMode,
     onThemeMode: (ThemeMode) -> Unit,
     pastEventCount: Int,
-    onDeletePastEvents: () -> Unit
+    onDeletePastEvents: () -> Unit,
+    onOpenEmojiLibraries: () -> Unit
 ) {
     val groups = listOf(
         "Sort by" to listOf(
@@ -69,7 +71,7 @@ fun ViewOptionsMenu(
         )
     )
 
-    val groupCount = groups.size + 1 // plus the past-events action group
+    val groupCount = groups.size + 1 // plus the actions group
     DropdownMenuPopup(expanded = expanded, onDismissRequest = onDismiss) {
         groups.forEachIndexed { groupIndex, (title, options) ->
             if (groupIndex > 0) Spacer(modifier = Modifier.height(MenuDefaults.GroupSpacing))
@@ -97,10 +99,19 @@ fun ViewOptionsMenu(
             DropdownMenuItem(
                 onClick = {
                     onDismiss()
+                    onOpenEmojiLibraries()
+                },
+                text = { Text("Emoji libraries") },
+                shape = MenuDefaults.itemShape(0, 2).shape,
+                leadingIcon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                onClick = {
+                    onDismiss()
                     onDeletePastEvents()
                 },
                 text = { Text(if (pastEventCount > 0) "Delete past events ($pastEventCount)" else "Delete past events") },
-                shape = MenuDefaults.itemShape(0, 1).shape,
+                shape = MenuDefaults.itemShape(1, 2).shape,
                 enabled = pastEventCount > 0,
                 leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) }
             )

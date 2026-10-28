@@ -1,23 +1,20 @@
 package com.wylew.dates.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.Palette
@@ -32,7 +29,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,77 +37,35 @@ import androidx.compose.ui.window.DialogProperties
 import com.wylew.dates.ui.theme.ExpressiveCardShape
 import com.wylew.dates.ui.theme.ExpressiveCompactCardShape
 import com.wylew.dates.ui.theme.ExpressivePillShape
+import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CustomFontEmojiView
-import com.wylew.dates.util.FluentEmojiManager
+import com.wylew.dates.util.EmojiLibraries
+import com.wylew.dates.util.EmojiLibrary
 import com.wylew.dates.util.FluentEmojiView
-import com.wylew.dates.util.FontEmojiLoader
+import com.wylew.dates.util.LibraryEmoji
 import com.wylew.dates.util.MonaFontManager
-import com.wylew.dates.util.OpenMojiManager
-import com.wylew.dates.util.SegoeSvgManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-data class EmojiItem(
-    val emoji: String,
-    val name: String,
-    val category: String,
-    val keywords: List<String>
-)
+val EmojiLibrary.icon: ImageVector
+    get() = when (this) {
+        EmojiLibrary.SYSTEM -> Icons.Default.Mood
+        EmojiLibrary.FLUENT -> Icons.Default.AutoAwesome
+        EmojiLibrary.MONA -> Icons.Default.FontDownload
+        EmojiLibrary.OPENMOJI -> Icons.Default.Palette
+        EmojiLibrary.SEGOE -> Icons.Default.Window
+    }
 
-object EmojiRepository {
-    val items = listOf(
-        // Celebrations & Events
-        EmojiItem("🎂", "Birthday Cake", "Celebrations", listOf("birthday", "cake", "party", "celebration", "sweet", "candle", "age")),
-        EmojiItem("🎉", "Party Popper", "Celebrations", listOf("party", "popper", "confetti", "celebration", "cheer", "event", "new year")),
-        EmojiItem("🥳", "Partying Face", "Celebrations", listOf("party", "face", "hat", "horn", "celebration", "happy", "joy")),
-        EmojiItem("🎈", "Balloon", "Celebrations", listOf("balloon", "party", "celebration", "red", "decor")),
-        EmojiItem("🎁", "Gift", "Celebrations", listOf("gift", "present", "box", "birthday", "christmas", "surprise")),
-        EmojiItem("🎄", "Christmas Tree", "Celebrations", listOf("christmas", "tree", "holiday", "xmas", "winter", "december")),
-        EmojiItem("🎆", "Fireworks", "Celebrations", listOf("fireworks", "sparks", "celebration", "july 4", "new year")),
-        EmojiItem("🥂", "Clinking Glasses", "Celebrations", listOf("cheers", "champagne", "toast", "drink", "wedding", "party")),
-        EmojiItem("💍", "Ring", "Celebrations", listOf("ring", "diamond", "wedding", "marriage", "engagement", "love")),
-        EmojiItem("🎃", "Jack-o-Lantern", "Celebrations", listOf("halloween", "pumpkin", "spooky", "october")),
-
-        // Work, Tech & Milestones
-        EmojiItem("💻", "Laptop", "Work & Tech", listOf("laptop", "computer", "tech", "work", "coding", "sync", "office")),
-        EmojiItem("🤝", "Handshake", "Work & Tech", listOf("meeting", "handshake", "deal", "business", "sync", "agreement")),
-        EmojiItem("🏠", "House", "Work & Tech", listOf("house", "home", "rent", "mortgage", "living", "real estate")),
-        EmojiItem("🎓", "Graduation Cap", "Work & Tech", listOf("graduation", "school", "degree", "college", "education", "diploma")),
-        EmojiItem("🏆", "Trophy", "Work & Tech", listOf("trophy", "winner", "award", "achievement", "first", "gold")),
-        EmojiItem("🚀", "Rocket", "Work & Tech", listOf("rocket", "launch", "space", "startup", "fast", "goal")),
-        EmojiItem("💼", "Briefcase", "Work & Tech", listOf("briefcase", "work", "job", "office", "business")),
-        EmojiItem("📝", "Memo", "Work & Tech", listOf("note", "memo", "paper", "write", "task", "todo")),
-        EmojiItem("💡", "Light Bulb", "Work & Tech", listOf("idea", "bulb", "light", "bright", "smart", "brain")),
-        EmojiItem("✈️", "Airplane", "Travel & Places", listOf("airplane", "flight", "travel", "vacation", "trip", "holiday", "fly")),
-
-        // Fitness & Activities
-        EmojiItem("🏋️", "Weight Lifting", "Fitness", listOf("gym", "workout", "fitness", "weights", "exercise", "lifting")),
-        EmojiItem("🏃", "Running", "Fitness", listOf("run", "runner", "marathon", "jog", "sprint", "sport")),
-        EmojiItem("⚽", "Soccer Ball", "Fitness", listOf("soccer", "football", "ball", "sport", "game", "match")),
-        EmojiItem("🏀", "Basketball", "Fitness", listOf("basketball", "ball", "sport", "hoops", "game")),
-        EmojiItem("🚴", "Biking", "Fitness", listOf("bike", "bicycle", "cycling", "ride", "sport", "outdoors")),
-        EmojiItem("🧘", "Yoga", "Fitness", listOf("yoga", "meditation", "relax", "zen", "wellness", "mindfulness")),
-        EmojiItem("🏖️", "Beach", "Travel & Places", listOf("beach", "vacation", "summer", "sand", "sea", "ocean", "sun")),
-        EmojiItem("🏔️", "Mountain", "Travel & Places", listOf("mountain", "hike", "nature", "climb", "trip", "snow")),
-        EmojiItem("🚗", "Car", "Travel & Places", listOf("car", "drive", "roadtrip", "auto", "vehicle", "travel")),
-        EmojiItem("🛳️", "Ship", "Travel & Places", listOf("cruise", "ship", "boat", "ocean", "travel", "sailing")),
-
-        // Food & Drinks
-        EmojiItem("🍕", "Pizza", "Food & Drink", listOf("pizza", "food", "dinner", "slice", "cheese", "italian")),
-        EmojiItem("☕", "Coffee", "Food & Drink", listOf("coffee", "cafe", "espresso", "morning", "drink", "latte")),
-        EmojiItem("🍷", "Wine", "Food & Drink", listOf("wine", "drink", "glass", "dinner", "alcohol", "night")),
-        EmojiItem("🍣", "Sushi", "Food & Drink", listOf("sushi", "japanese", "fish", "food", "dinner")),
-        EmojiItem("🍔", "Burger", "Food & Drink", listOf("burger", "fastfood", "hamburger", "lunch", "food")),
-        EmojiItem("🍦", "Ice Cream", "Food & Drink", listOf("icecream", "dessert", "sweet", "summer", "treat")),
-
-        // Time & Health
-        EmojiItem("⏰", "Alarm Clock", "Time & Health", listOf("alarm", "clock", "time", "deadline", "reminder", "morning")),
-        EmojiItem("🩺", "Stethoscope", "Time & Health", listOf("doctor", "health", "hospital", "checkup", "medical")),
-        EmojiItem("❤️", "Red Heart", "Symbols", listOf("heart", "love", "romance", "red", "valentine", "anniversary")),
-        EmojiItem("⭐", "Star", "Symbols", listOf("star", "favorite", "gold", "shine", "milestone", "top")),
-        EmojiItem("🔥", "Fire", "Symbols", listOf("fire", "hot", "streak", "flame", "lit", "popular")),
-        EmojiItem("💰", "Money Bag", "Symbols", listOf("money", "cash", "finance", "pay", "dollar", "wealth"))
-    )
-}
+/** Where a library's files go in the project when they're missing */
+val EmojiLibrary.assetPath: String
+    get() = when (this) {
+        EmojiLibrary.SYSTEM -> ""
+        EmojiLibrary.FLUENT -> "app/src/main/assets/fluent_emojis/"
+        EmojiLibrary.MONA -> "app/src/main/assets/fonts/Mona.ttf"
+        EmojiLibrary.OPENMOJI -> "app/src/main/assets/openmoji_emojis/"
+        EmojiLibrary.SEGOE -> "app/src/main/assets/segoe_svgs/"
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,98 +75,14 @@ fun EmojiSearchDialog(
 ) {
     val context = LocalContext.current
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    // Opens on the default library (when its assets are present)
+    var selectedLibrary by remember { mutableStateOf<EmojiLibrary?>(null) }
+    LaunchedEffect(Unit) {
+        val default = AppSettings.currentDefaultEmojiLibrary(context)
+        selectedLibrary = if (EmojiLibraries.isAvailable(context, default)) default else EmojiLibrary.SYSTEM
+    }
     var showLibraryManager by remember { mutableStateOf(false) }
-
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
-
-    val categories = remember {
-        listOf("All", "Celebrations", "Work & Tech", "Fitness", "Travel & Places", "Food & Drink", "Time & Health", "Symbols")
-    }
-
-    val filteredSystemEmojis = remember(searchQuery, selectedCategory) {
-        EmojiRepository.items.filter { item ->
-            val matchesCategory = selectedCategory == "All" || item.category == selectedCategory
-            val matchesSearch = if (searchQuery.isBlank()) {
-                true
-            } else {
-                val queryLower = searchQuery.trim().lowercase()
-                item.name.lowercase().contains(queryLower) ||
-                        item.keywords.any { it.lowercase().contains(queryLower) } ||
-                        item.emoji.contains(queryLower)
-            }
-            matchesCategory && matchesSearch
-        }
-    }
-
-    // Fluent 3D
-    val fluentDownloadedItems = remember { FluentEmojiManager.getDownloadedEmojis(context) }
-    val isFluentDownloaded = FluentEmojiManager.isPackDownloaded(context)
-
-    val filteredFluentEmojis = remember(searchQuery, fluentDownloadedItems) {
-        if (searchQuery.isBlank()) {
-            fluentDownloadedItems
-        } else {
-            val queryLower = searchQuery.trim().lowercase()
-            fluentDownloadedItems.filter { it.name.lowercase().contains(queryLower) }
-        }
-    }
-
-    // Mona Font (loaded dynamically from TTF)
-    val isMonaDownloaded = MonaFontManager.isFontDownloaded(context)
-    val monaFontEmojis = remember(isMonaDownloaded) {
-        if (isMonaDownloaded) FontEmojiLoader.loadEmojisFromFont(context, MonaFontManager.getFontFile(context)) else emptyList()
-    }
-    val filteredMonaEmojis = remember(searchQuery, monaFontEmojis) {
-        if (searchQuery.isBlank()) monaFontEmojis
-        else {
-            val queryLower = searchQuery.trim().lowercase()
-            monaFontEmojis.filter { it.emoji.contains(queryLower) || it.name.lowercase().contains(queryLower) }
-        }
-    }
-
-    // OpenMoji Color
-    val openMojiDownloadedItems = remember { OpenMojiManager.getDownloadedEmojis(context) }
-    val isOpenMojiDownloaded = OpenMojiManager.isPackDownloaded(context)
-
-    val filteredOpenMoji = remember(searchQuery, openMojiDownloadedItems) {
-        if (searchQuery.isBlank()) {
-            openMojiDownloadedItems
-        } else {
-            val queryLower = searchQuery.trim().lowercase()
-            openMojiDownloadedItems.filter { it.name.lowercase().contains(queryLower) }
-        }
-    }
-
-    // Segoe UI SVGs
-    val isSegoeDownloaded = SegoeSvgManager.isPackDownloaded(context)
-    val segoeSvgEmojis = remember(isSegoeDownloaded) {
-        if (isSegoeDownloaded) SegoeSvgManager.getDownloadedEmojis(context) else emptyList()
-    }
-    val filteredSegoeEmojis = remember(searchQuery, segoeSvgEmojis) {
-        if (searchQuery.isBlank()) segoeSvgEmojis
-        else {
-            val queryLower = searchQuery.trim().lowercase()
-            segoeSvgEmojis.filter { item ->
-                item.name.lowercase().contains(queryLower) ||
-                        item.keywords.any { it.lowercase().contains(queryLower) }
-            }
-        }
-    }
-    // groupBy keeps metadata order, so sections follow the Unicode emoji groups
-    val segoeSections = remember(filteredSegoeEmojis) { filteredSegoeEmojis.groupBy { it.category } }
-    val segoeHeaderIndexes = remember(segoeSections) {
-        var index = 0
-        segoeSections.mapValues { (_, items) -> index.also { index += items.size + 1 } }
-    }
-    val segoeGridState = rememberLazyGridState()
-    val currentSegoeSection by remember(segoeHeaderIndexes) {
-        derivedStateOf {
-            segoeHeaderIndexes.entries.lastOrNull { it.value <= segoeGridState.firstVisibleItemIndex }?.key
-        }
-    }
-    val scope = rememberCoroutineScope()
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -241,48 +111,26 @@ fun EmojiSearchDialog(
                     IconButton(onClick = { showLibraryManager = true }) {
                         Icon(
                             Icons.Default.Tune,
-                            contentDescription = "Manage Libraries",
+                            contentDescription = "Manage libraries",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 ScrollableTabRow(
-                    selectedTabIndex = selectedTab,
+                    selectedTabIndex = selectedLibrary?.ordinal ?: 0,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     edgePadding = 0.dp,
                     divider = {}
                 ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("System") },
-                        icon = { Icon(Icons.Default.Mood, contentDescription = null) }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Fluent 3D") },
-                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) }
-                    )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Mona Font") },
-                        icon = { Icon(Icons.Default.FontDownload, contentDescription = null) }
-                    )
-                    Tab(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        text = { Text("OpenMoji") },
-                        icon = { Icon(Icons.Default.Palette, contentDescription = null) }
-                    )
-                    Tab(
-                        selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
-                        text = { Text("Segoe UI") },
-                        icon = { Icon(Icons.Default.Window, contentDescription = null) }
-                    )
+                    EmojiLibrary.entries.forEach { library ->
+                        Tab(
+                            selected = selectedLibrary == library,
+                            onClick = { selectedLibrary = library },
+                            text = { Text(library.label) },
+                            icon = { Icon(library.icon, contentDescription = null) }
+                        )
+                    }
                 }
             }
         },
@@ -292,326 +140,45 @@ fun EmojiSearchDialog(
                     .fillMaxWidth()
                     .height((LocalConfiguration.current.screenHeightDp * 0.6f).dp)
             ) {
-                when (selectedTab) {
-                    0 -> {
-                        // System Tab
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            singleLine = true,
-                            shape = ExpressivePillShape,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                            )
+                val library = selectedLibrary
+                if (library == null) {
+                    CenteredLoading()
+                } else if (!EmojiLibraries.isAvailable(context, library)) {
+                    AssetFolderPromptCard(
+                        icon = library.icon,
+                        title = "${library.label} isn't installed",
+                        description = "Add the library's files to this project folder and rebuild:",
+                        folderPath = library.assetPath
+                    )
+                } else {
+                    val items by produceState<List<LibraryEmoji>?>(null, library) {
+                        value = withContext(Dispatchers.Default) { EmojiLibraries.load(context, library) }
+                    }
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        shape = ExpressivePillShape,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
                         )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(horizontal = 2.dp)
-                        ) {
-                            items(categories) { category ->
-                                val isSelected = selectedCategory == category
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedCategory = category },
-                                    label = { Text(category, style = MaterialTheme.typography.labelSmall) },
-                                    shape = ExpressivePillShape,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                    )
-                                )
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    val loaded = items
+                    if (loaded == null) {
+                        CenteredLoading()
+                    } else {
+                        val filtered = remember(loaded, searchQuery) { filterEmojis(loaded, searchQuery) }
+                        // Fresh grid state (scroll position, sections) per library
+                        key(library) {
+                            SectionedEmojiGrid(filtered, library) { item, imageUri ->
+                                onEmojiSelected(item.emoji, imageUri)
+                                onDismissRequest()
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 44.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            items(filteredSystemEmojis) { item ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                        .clickable {
-                                            onEmojiSelected(item.emoji, null)
-                                            onDismissRequest()
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = item.emoji,
-                                        fontSize = 24.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    1 -> {
-                        // Fluent 3D Tab
-                        if (isFluentDownloaded) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Search") },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                singleLine = true,
-                                shape = ExpressivePillShape,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 52.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(filteredFluentEmojis) { item ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .clickable {
-                                                onEmojiSelected(null, item.filePath)
-                                                onDismissRequest()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        FluentEmojiView(
-                                            imageUri = item.filePath,
-                                            modifier = Modifier.size(36.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            AssetFolderPromptCard(
-                                icon = Icons.Default.AutoAwesome,
-                                title = "Fluent Animated Pack",
-                                description = "Place asset files into:",
-                                folderPath = "files/fluent_emojis/"
-                            )
-                        }
-                    }
-
-                    2 -> {
-                        // Mona Font Tab
-                        if (isMonaDownloaded) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Search") },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                singleLine = true,
-                                shape = ExpressivePillShape,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 44.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(filteredMonaEmojis) { item ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .clickable {
-                                                onEmojiSelected(item.emoji, "font:mona")
-                                                onDismissRequest()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CustomFontEmojiView(
-                                            emoji = item.emoji,
-                                            fontFile = MonaFontManager.getFontFile(context),
-                                            modifier = Modifier.size(36.dp),
-                                            fontSizeSp = 22f
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            AssetFolderPromptCard(
-                                icon = Icons.Default.FontDownload,
-                                title = "Mona Font Emojis",
-                                description = "Place Mona.ttf font file into:",
-                                folderPath = "files/fonts/Mona.ttf"
-                            )
-                        }
-                    }
-
-                    3 -> {
-                        // OpenMoji Tab
-                        if (isOpenMojiDownloaded) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Search") },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                singleLine = true,
-                                shape = ExpressivePillShape,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 52.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(filteredOpenMoji) { item ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .clickable {
-                                                onEmojiSelected(null, item.filePath)
-                                                onDismissRequest()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        FluentEmojiView(
-                                            imageUri = item.filePath,
-                                            modifier = Modifier.size(36.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            AssetFolderPromptCard(
-                                icon = Icons.Default.Palette,
-                                title = "OpenMoji Color Pack",
-                                description = "Place asset files into:",
-                                folderPath = "files/openmoji_emojis/"
-                            )
-                        }
-                    }
-
-                    4 -> {
-                        // Segoe UI Tab
-                        if (isSegoeDownloaded) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Search") },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                singleLine = true,
-                                shape = ExpressivePillShape,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                contentPadding = PaddingValues(horizontal = 2.dp)
-                            ) {
-                                items(segoeSections.keys.toList()) { category ->
-                                    FilterChip(
-                                        selected = currentSegoeSection == category,
-                                        onClick = {
-                                            scope.launch { segoeGridState.animateScrollToItem(segoeHeaderIndexes.getValue(category)) }
-                                        },
-                                        label = { Text(category, style = MaterialTheme.typography.labelSmall) },
-                                        shape = ExpressivePillShape,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                        )
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 52.dp),
-                                state = segoeGridState,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                segoeSections.forEach { (category, sectionItems) ->
-                                    item(key = "header:$category", span = { GridItemSpan(maxLineSpan) }) {
-                                        Text(
-                                            text = category,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
-                                        )
-                                    }
-                                    items(sectionItems, key = { it.id }) { item ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(52.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                                .clickable {
-                                                    onEmojiSelected(null, item.filePath)
-                                                    onDismissRequest()
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            FluentEmojiView(
-                                                imageUri = item.filePath,
-                                                modifier = Modifier.size(36.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            AssetFolderPromptCard(
-                                icon = Icons.Default.Window,
-                                title = "Microsoft Segoe UI Emoji",
-                                description = "Place asset files into:",
-                                folderPath = "files/segoe_svgs/"
-                            )
                         }
                     }
                 }
@@ -623,6 +190,167 @@ fun EmojiSearchDialog(
         EmojiLibraryManagerSheet(
             onDismiss = { showLibraryManager = false }
         )
+    }
+}
+
+private fun filterEmojis(items: List<LibraryEmoji>, query: String): List<LibraryEmoji> {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return items
+    return items.filter { item ->
+        item.name.lowercase().contains(q) ||
+                item.keywords.any { it.contains(q) } ||
+                item.emoji == query.trim()
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun CenteredLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        LoadingIndicator()
+    }
+}
+
+/**
+ * Emoji grid split into Unicode sections, with jump chips that track the visible section.
+ * Long-pressing an emoji with skin tones offers its tone variants.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SectionedEmojiGrid(
+    items: List<LibraryEmoji>,
+    library: EmojiLibrary,
+    onPick: (item: LibraryEmoji, imageUri: String?) -> Unit
+) {
+    // groupBy keeps load order, so sections follow the Unicode emoji groups
+    val sections = remember(items) { items.groupBy { it.category } }
+    val headerIndexes = remember(sections) {
+        var index = 0
+        sections.mapValues { (_, sectionItems) -> index.also { index += sectionItems.size + 1 } }
+    }
+    val gridState = rememberLazyGridState()
+    val currentSection by remember(headerIndexes) {
+        derivedStateOf { headerIndexes.entries.lastOrNull { it.value <= gridState.firstVisibleItemIndex }?.key }
+    }
+    val scope = rememberCoroutineScope()
+    var tonePickerFor by remember { mutableStateOf<String?>(null) }
+
+    if (items.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No matches", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp)
+    ) {
+        items(sections.keys.toList()) { category ->
+            FilterChip(
+                selected = currentSection == category,
+                onClick = { scope.launch { gridState.animateScrollToItem(headerIndexes.getValue(category)) } },
+                label = { Text(category, style = MaterialTheme.typography.labelSmall) },
+                shape = ExpressivePillShape,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 52.dp),
+        state = gridState,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        sections.forEach { (category, sectionItems) ->
+            item(key = "header:$category", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = category,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
+                )
+            }
+            items(sectionItems, key = { it.id }) { item ->
+                // Fixed-size wrapper so the tone dot sits on the tile, not the (wider) grid cell
+                Box(modifier = Modifier.size(52.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .combinedClickable(
+                                onClick = { onPick(item, item.imageUri) },
+                                onLongClick = if (item.tones.isNotEmpty()) {
+                                    { tonePickerFor = item.id }
+                                } else null
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmojiTile(library, item.emoji, item.imageUri)
+                    }
+                    if (item.tones.isNotEmpty()) {
+                        // Hint that a long-press offers skin tones
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(3.dp)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = tonePickerFor == item.id,
+                        onDismissRequest = { tonePickerFor = null }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            item.tones.forEach { tone ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            tonePickerFor = null
+                                            onPick(item, tone)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    EmojiTile(library, item.emoji, tone)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Renders one emoji in its library's style */
+@Composable
+fun EmojiTile(library: EmojiLibrary, emoji: String?, imageUri: String?) {
+    when {
+        library == EmojiLibrary.MONA -> CustomFontEmojiView(
+            emoji = emoji ?: "",
+            fontFile = MonaFontManager.getFontFile(LocalContext.current),
+            modifier = Modifier.size(36.dp),
+            fontSizeSp = 22f
+        )
+        imageUri != null -> FluentEmojiView(imageUri = imageUri, modifier = Modifier.size(36.dp))
+        else -> Text(text = emoji ?: "", fontSize = 24.sp)
     }
 }
 
