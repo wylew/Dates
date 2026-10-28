@@ -65,7 +65,9 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        widgetEventId = intent?.getStringExtra("event_id")
+        // Only a fresh launch acts on the widget tap; a recreation (rotation, theme change) keeps
+        // the same intent, and re-reading it would reopen that event over the list
+        if (savedInstanceState == null) widgetEventId = consumeWidgetEventId(intent)
 
         // Configure global Coil ImageLoader to support Animated WebP and Animated GIF/PNG decoding
         val animatedImageLoader = ImageLoader.Builder(this)
@@ -423,6 +425,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra("event_id")?.let { widgetEventId = it }
+        consumeWidgetEventId(intent)?.let { widgetEventId = it }
     }
+
+    /** The event a widget tap asked to open, removed from the intent so it's handled once */
+    private fun consumeWidgetEventId(intent: Intent?): String? =
+        intent?.getStringExtra("event_id")?.also { intent.removeExtra("event_id") }
 }
