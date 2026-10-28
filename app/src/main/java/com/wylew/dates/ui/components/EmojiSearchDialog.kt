@@ -224,6 +224,8 @@ private fun SectionedEmojiGrid(
         sections.mapValues { (_, sectionItems) -> index.also { index += sectionItems.size + 1 } }
     }
     val gridState = rememberLazyGridState()
+    // The grid keeps the previous top item in view by key; after a new search, show the best matches
+    LaunchedEffect(items) { gridState.scrollToItem(0) }
     val currentSection by remember(headerIndexes) {
         derivedStateOf { headerIndexes.entries.lastOrNull { it.value <= gridState.firstVisibleItemIndex }?.key }
     }
