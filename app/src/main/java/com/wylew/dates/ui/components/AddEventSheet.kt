@@ -54,7 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 private val PresetColors = listOf(
@@ -610,20 +610,20 @@ fun AddEventSheet(
         )
     }
 
-    // Date Picker Dialog
+    // Date Picker Dialog. The picker works in UTC: a day is its midnight UTC, whatever the device zone.
+    // Reading that in the local zone gave the day before west of UTC (Nov 27 became Nov 26, 4 PM).
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = selectedDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            initialSelectedDateMillis = selectedDateTime.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        selectedDateTime = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(it),
-                            ZoneId.systemDefault()
-                        )
+                        // Change the day only; keep the time already chosen
+                        val day = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+                        selectedDateTime = day.atTime(selectedDateTime.toLocalTime())
                     }
                     showDatePicker = false
                 }) { Text("OK") }
