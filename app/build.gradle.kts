@@ -18,8 +18,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing key details live outside the repo, in ~/.gradle/gradle.properties
+    val releaseStoreFile = providers.gradleProperty("DATES_RELEASE_STORE_FILE").orNull
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = providers.gradleProperty("DATES_RELEASE_STORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("DATES_RELEASE_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("DATES_RELEASE_KEY_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseStoreFile != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
