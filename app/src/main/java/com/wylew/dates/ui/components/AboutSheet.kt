@@ -28,6 +28,17 @@ private data class Credit(
     val note: String? = null
 )
 
+private val THIS_APP = listOf(
+    Credit(
+        name = "Dates",
+        holder = "© 2026 Wyatt Lewin",
+        license = "Apache License 2.0",
+        url = "https://github.com/wylew/Dates",
+        licenseFile = "apache-2.0.txt",
+        note = "Open source. The emoji artwork, data and libraries below keep their own licenses."
+    )
+)
+
 private val EMOJI_ARTWORK = listOf(
     Credit(
         name = "Fluent Emoji",
@@ -130,6 +141,7 @@ fun AboutSheet(onDismiss: () -> Unit) {
                     )
                 }
             }
+            creditSection("This app", THIS_APP) { openCredit = it }
             creditSection("Emoji artwork", EMOJI_ARTWORK) { openCredit = it }
             creditSection("Emoji data", EMOJI_DATA) { openCredit = it }
             creditSection("Open-source libraries", LIBRARIES) { openCredit = it }

@@ -148,5 +148,7 @@ All under the [Apache License 2.0](app/src/main/assets/licenses/apache-2.0.txt):
 
 ### This app
 
-The Dates source code doesn't have an open-source license yet, so all rights are reserved by its
-author. The artwork, data and libraries above remain under their own licenses.
+Copyright 2026 Wyatt Lewin. The Dates source code is licensed under the
+[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). That covers the app's own code only:
+the artwork, data and libraries above remain under their own licenses, and the Segoe UI Emoji
+images remain Microsoft's.
