@@ -2,67 +2,26 @@ package com.wylew.dates.util
 
 import android.content.Context
 import java.io.File
-import java.io.FileOutputStream
 
-data class OpenMojiItem(
-    val id: String,
-    val name: String,
-    val fileUri: String,
-    val filePath: String,
-    val category: String = "OpenMoji"
-)
-
+/**
+ * OpenMoji color SVGs (https://openmoji.org, CC BY-SA 4.0) bundled in assets/openmoji_emojis, named
+ * by codepoint, plus extras.json naming OpenMoji's own extras. Rebuild with tools/import_openmoji.py.
+ */
 object OpenMojiManager {
-    fun getEmojiDir(context: Context): File {
-        val dir = File(context.filesDir, "openmoji_emojis")
-        if (!dir.exists()) {
-            dir.mkdirs()
+    const val ASSET_DIR = "openmoji_emojis"
+    const val EXTRAS_FILE = "extras.json"
+
+    fun assetFiles(context: Context): List<String> =
+        try {
+            context.assets.list(ASSET_DIR)?.filter { it.endsWith(".svg") }.orEmpty()
+        } catch (_: Exception) {
+            emptyList()
         }
-        if (dir.listFiles().isNullOrEmpty()) {
-            try {
-                val assetFiles = context.assets.list("openmoji_emojis") ?: emptyArray()
-                for (fileName in assetFiles) {
-                    context.assets.open("openmoji_emojis/$fileName").use { input ->
-                        FileOutputStream(File(dir, fileName)).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Assets folder might not exist yet
-            }
-        }
-        return dir
-    }
 
-    fun isPackDownloaded(context: Context): Boolean {
-        val dir = getEmojiDir(context)
-        val files = dir.listFiles { _, name -> name.endsWith(".png") }
-        return !files.isNullOrEmpty() && files.any { it.length() > 0 }
-    }
+    fun isPackDownloaded(context: Context): Boolean = assetFiles(context).isNotEmpty()
 
-    fun getDownloadedEmojis(context: Context): List<OpenMojiItem> {
-        val dir = getEmojiDir(context)
-        val files = dir.listFiles { _, name -> name.endsWith(".png") && File(dir, name).length() > 0 } ?: return emptyList()
-
-        return files.sortedBy { it.name }.map { file ->
-            val cleanName = file.nameWithoutExtension
-                .replace("-", " ")
-                .replace("_", " ")
-                .split(" ")
-                .joinToString(" ") { word -> word.replaceFirstChar { char -> char.uppercase() } }
-
-            OpenMojiItem(
-                id = file.name,
-                name = cleanName,
-                fileUri = file.toURI().toString(),
-                filePath = file.absolutePath
-            )
-        }
-    }
-
-    fun deletePack(context: Context) {
-        val dir = getEmojiDir(context)
-        dir.deleteRecursively()
+    /** Older builds copied OpenMoji files into internal storage; reclaim that space */
+    fun deleteLegacyCopies(context: Context) {
+        File(context.filesDir, ASSET_DIR).takeIf { it.exists() }?.deleteRecursively()
     }
 }

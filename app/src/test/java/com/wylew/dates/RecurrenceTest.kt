@@ -114,4 +114,36 @@ class RecurrenceTest {
         assertEquals("Monthly on the last Fri", DateUtils.describe(Recurrence.Custom(Frequency.MONTHLY, weekOfMonth = -1, dayOfWeek = 5)))
         assertEquals("Every 2 weeks on Tue", DateUtils.describe(Recurrence.Custom(Frequency.WEEKLY, interval = 2, dayOfWeek = 2)))
     }
+
+    // --- Weekly on several days / custom rules deciding the first occurrence -------------
+
+    @Test fun weeklyOnSeveralDays() {
+        // Tue/Thu every week, starting Tue Oct 6 2026; "now" is Tue Oct 27 16:47
+        val e = ev(LocalDateTime.of(2026, 10, 6, 9, 0), Recurrence.Custom(Frequency.WEEKLY, daysOfWeek = listOf(4, 2)))
+        assertEquals(LocalDateTime.of(2026, 10, 29, 9, 0), DateUtils.getNextOccurrence(e, now))
+        assertEquals(LocalDateTime.of(2026, 10, 27, 9, 0), DateUtils.getNextOccurrence(e, LocalDateTime.of(2026, 10, 27, 8, 0)))
+    }
+
+    @Test fun everyOtherWeekOnSeveralDays() {
+        // Mon/Fri every 2 weeks from the week of Mon Oct 12 2026: Oct 12, 16, 26, 30, ...
+        val e = ev(LocalDateTime.of(2026, 10, 12, 18, 0), Recurrence.Custom(Frequency.WEEKLY, interval = 2, daysOfWeek = listOf(1, 5)))
+        assertEquals(LocalDateTime.of(2026, 10, 30, 18, 0), DateUtils.getNextOccurrence(e, now))
+    }
+
+    @Test fun customRuleDecidesFirstOccurrence() {
+        // Created on a Wednesday with "monthly on the 1st Thursday": first date is the 1st Thursday, not the Wednesday
+        val e = ev(LocalDateTime.of(2026, 10, 28, 19, 0), Recurrence.Custom(Frequency.MONTHLY, dayOfWeek = 4, weekOfMonth = 1))
+        assertEquals(LocalDateTime.of(2026, 11, 5, 19, 0), DateUtils.getNextOccurrence(e, now))
+    }
+
+    @Test fun describesSeveralDays() {
+        assertEquals("Weekly on Tue, Thu", DateUtils.describe(Recurrence.Custom(Frequency.WEEKLY, daysOfWeek = listOf(4, 2))))
+        assertEquals("Every 2 weeks on Mon, Fri", DateUtils.describe(Recurrence.Custom(Frequency.WEEKLY, interval = 2, daysOfWeek = listOf(1, 5))))
+    }
+
+    @Test fun importsSeveralWeekdays() {
+        val anchor = LocalDateTime.of(2026, 10, 27, 9, 0)
+        val r = RRuleParser.toRecurrence(RRuleParser.parse("FREQ=WEEKLY;BYDAY=TU,TH"), anchor) as Recurrence.Custom
+        assertEquals(listOf(2, 4), r.daysOfWeek)
+    }
 }

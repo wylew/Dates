@@ -30,7 +30,13 @@ data class DateEvent(
     @Serializable(with = ColorSerializer::class)
     val customColor: Color? = null,
     @Serializable(with = ColorSerializer::class)
-    val autoColor: Color? = null
+    val autoColor: Color? = null,
+    // Where an imported date came from, so later imports can skip it
+    /** The calendar event's iCal UID (stable across devices and re-syncs) */
+    val sourceUid: String? = null,
+    /** The CalendarContract calendar and event row IDs (this device only), used when there's no UID */
+    val sourceCalendarId: Long? = null,
+    val sourceEventId: Long? = null
 )
 
 @Serializable
@@ -51,8 +57,10 @@ sealed class Recurrence {
         val interval: Int = 1,
         val dayOfWeek: Int? = null, // 1-7 (Monday-Sunday)
         val dayOfMonth: Int? = null, // 1-31
-        val weekOfMonth: Int? = null, // 1-5
-        val monthOfYear: Int? = null // 1-12
+        val weekOfMonth: Int? = null, // 1-5, or -1 for the last
+        val monthOfYear: Int? = null, // 1-12
+        /** Weekly rules on several days ("every Tue and Thu"), 1-7 (Monday-Sunday); overrides [dayOfWeek] */
+        val daysOfWeek: List<Int> = emptyList()
     ) : Recurrence()
 }
 

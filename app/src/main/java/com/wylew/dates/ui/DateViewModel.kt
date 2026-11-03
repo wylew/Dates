@@ -5,15 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wylew.dates.model.DateEvent
 import com.wylew.dates.model.DateEventRepository
+import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.DateUtils
 import com.wylew.dates.widget.WidgetUpdater
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 enum class ThemeMode {
     SYSTEM, LIGHT, DARK
@@ -30,11 +31,31 @@ enum class ListDensity {
 class DateViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = DateEventRepository(application)
 
-    private val _sortCriterion = MutableStateFlow(SortCriterion.NEXT_OCCURRENCE)
-    val sortCriterion: StateFlow<SortCriterion> = _sortCriterion.asStateFlow()
+    /**
+     * A view option saved in AppSettings so it survives restarts. The first value is read
+     * up front so the app opens with the saved theme and layout instead of flashing the defaults.
+     */
+    private inline fun <reified E : Enum<E>> savedSetting(key: String, default: E): StateFlow<E> {
+        val flow = AppSettings.enumSetting(getApplication(), key, default)
+        return flow.stateIn(viewModelScope, SharingStarted.Eagerly, runBlocking { flow.first() })
+    }
+
+    private fun <E : Enum<E>> save(key: String, value: E) {
+        viewModelScope.launch { AppSettings.setEnumSetting(getApplication(), key, value) }
+    }
+
+    val sortCriterion: StateFlow<SortCriterion> = savedSetting(SORT_KEY, SortCriterion.NEXT_OCCURRENCE)
+    val listDensity: StateFlow<ListDensity> = savedSetting(DENSITY_KEY, ListDensity.COMPACT)
+    val themeMode: StateFlow<ThemeMode> = savedSetting(THEME_KEY, ThemeMode.SYSTEM)
+
+    fun setThemeMode(mode: ThemeMode) = save(THEME_KEY, mode)
+
+    fun setSortCriterion(criterion: SortCriterion) = save(SORT_KEY, criterion)
+
+    fun setListDensity(density: ListDensity) = save(DENSITY_KEY, density)
 
     // Upcoming events first, then past one-time events (most recent first when sorting by date)
-    val events: StateFlow<List<DateEvent>> = combine(repository.events, _sortCriterion) { eventList, criterion ->
+    val events: StateFlow<List<DateEvent>> = combine(repository.events, sortCriterion) { eventList, criterion ->
         val (past, upcoming) = eventList.partition(DateUtils::isPast)
         when (criterion) {
             SortCriterion.ALPHA -> upcoming.sortedBy { it.title } + past.sortedBy { it.title }
@@ -46,20 +67,6 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
-
-    private val _listDensity = MutableStateFlow(ListDensity.COMPACT)
-    val listDensity: StateFlow<ListDensity> = _listDensity.asStateFlow()
-
-    private val _themeMode = MutableStateFlow(ThemeMode.SYSTEM)
-    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
-
-    fun setThemeMode(mode: ThemeMode) {
-        _themeMode.value = mode
-    }
-
-    fun setSortCriterion(criterion: SortCriterion) {
-        _sortCriterion.value = criterion
-    }
 
     init {
         viewModelScope.launch {
@@ -74,6 +81,15 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
             val current = events.value.toMutableList()
             current.add(event)
             repository.saveEvents(current)
+            WidgetUpdater.updateAllWidgets(getApplication())
+        }
+    }
+
+    /** Adds [newEvents] and replaces [updated] (matched by id) in a single save */
+    fun importEvents(newEvents: List<DateEvent>, updated: List<DateEvent>) {
+        viewModelScope.launch {
+            val byId = updated.associateBy { it.id }
+            repository.saveEvents(events.value.map { byId[it.id] ?: it } + newEvents)
             WidgetUpdater.updateAllWidgets(getApplication())
         }
     }
@@ -105,14 +121,16 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setListDensity(density: ListDensity) {
-        _listDensity.value = density
-    }
-
     fun deletePastEvents() {
         viewModelScope.launch {
             repository.saveEvents(events.value.filterNot(DateUtils::isPast))
             WidgetUpdater.updateAllWidgets(getApplication())
         }
+    }
+
+    private companion object {
+        const val THEME_KEY = "theme_mode"
+        const val SORT_KEY = "sort_criterion"
+        const val DENSITY_KEY = "list_density"
     }
 }

@@ -35,6 +35,8 @@ object CalendarIntegrationHelper {
         val dtend: Long,
         val allDay: Boolean,
         val rrule: String?,
+        /** iCal UID (UID_2445), when the calendar provides one */
+        val uid: String? = null,
         /** Start of the next upcoming instance from the Instances table, if the event repeats. */
         val nextInstanceStart: Long? = null,
         /** Start of the most recent past instance, used when a series has ended. */
@@ -108,7 +110,8 @@ object CalendarIntegrationHelper {
             CalendarContract.Events.DTEND,
             CalendarContract.Events.DURATION,
             CalendarContract.Events.ALL_DAY,
-            CalendarContract.Events.RRULE
+            CalendarContract.Events.RRULE,
+            CalendarContract.Events.UID_2445
         )
         val selection = buildString {
             append("${CalendarContract.Events.CALENDAR_ID} = ?")
@@ -146,7 +149,8 @@ object CalendarIntegrationHelper {
                             dtstart = dtstart,
                             dtend = dtend,
                             allDay = allDay,
-                            rrule = cursor.string(CalendarContract.Events.RRULE)?.takeIf { it.isNotBlank() }
+                            rrule = cursor.string(CalendarContract.Events.RRULE)?.takeIf { it.isNotBlank() },
+                            uid = cursor.string(CalendarContract.Events.UID_2445)?.takeIf { it.isNotBlank() }
                         )
                     )
                 }
@@ -252,7 +256,10 @@ object CalendarIntegrationHelper {
             isAllDay = sysEvent.allDay,
             recurrence = recurrence,
             emoji = "📅",
-            customColor = randomEventColor()
+            customColor = randomEventColor(),
+            sourceUid = sysEvent.uid,
+            sourceCalendarId = sysEvent.calendarId,
+            sourceEventId = sysEvent.id
         )
     }
 

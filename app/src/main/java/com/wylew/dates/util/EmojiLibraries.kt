@@ -108,7 +108,8 @@ object EmojiLibraries {
             EmojiLibrary.SEGOE -> loadPack(context, "segoe_svgs") { "file:///android_asset/segoe_svgs/$it" }
             EmojiLibrary.OPENMOJI -> loadCodepointPack(
                 context,
-                OpenMojiManager.getDownloadedEmojis(context).map { File(it.filePath).name to it.filePath }
+                OpenMojiManager.assetFiles(context).map { it to "file:///android_asset/${OpenMojiManager.ASSET_DIR}/$it" },
+                extras = loadExtras(context, "${OpenMojiManager.ASSET_DIR}/${OpenMojiManager.EXTRAS_FILE}")
             )
         }
     }
@@ -227,7 +228,20 @@ object EmojiLibraries {
      * Packs whose files are named by codepoint ("1f600.webp", "1F468-200D-1F469.png") are matched
      * to the Unicode index directly; skin-tone files become tones of their base emoji.
      */
-    private fun loadCodepointPack(context: Context, files: List<Pair<String, String>>): List<LibraryEmoji> {
+    @Serializable
+    private data class ExtraEntry(val file: String, val name: String, val keywords: List<String> = emptyList())
+
+    /** Names for a pack's images that aren't standard emoji, keyed by file name (empty if the pack has none) */
+    private fun loadExtras(context: Context, path: String): Map<String, ExtraEntry> =
+        runCatching {
+            context.assets.open(path).bufferedReader().use { json.decodeFromString<List<ExtraEntry>>(it.readText()) }
+        }.getOrDefault(emptyList()).associateBy { it.file }
+
+    private fun loadCodepointPack(
+        context: Context,
+        files: List<Pair<String, String>>,
+        extras: Map<String, ExtraEntry> = emptyMap()
+    ): List<LibraryEmoji> {
         val byEmoji = indexByEmoji(context)
         val order = index(context).withIndex().associate { normalize(it.value.e) to it.index }
         val skinTones = (0x1F3FB..0x1F3FF).map { String(Character.toChars(it)) }
@@ -248,12 +262,13 @@ object EmojiLibraries {
         return base.map { (chars, file) ->
             val (fileName, uri) = file
             val entry = byEmoji[chars]
+            val extra = if (entry == null) extras[fileName] else null
             val tones = tonesByBase[chars].orEmpty()
             LibraryEmoji(
                 id = fileName,
-                name = entry?.n ?: fileName.substringBeforeLast('.'),
+                name = entry?.n ?: extra?.name ?: fileName.substringBeforeLast('.'),
                 category = entry?.g ?: EXTRAS_CATEGORY,
-                keywords = withCurated(entry?.e, entry?.k ?: emptyList()),
+                keywords = withCurated(entry?.e, entry?.k ?: extra?.keywords ?: emptyList()),
                 emoji = entry?.e,
                 imageUri = uri,
                 tones = if (tones.isEmpty()) emptyList() else listOf(uri) + tones.map { it.first },

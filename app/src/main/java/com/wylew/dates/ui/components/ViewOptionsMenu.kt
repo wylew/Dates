@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.ViewHeadline
@@ -48,7 +49,8 @@ fun ViewOptionsMenu(
     onThemeMode: (ThemeMode) -> Unit,
     pastEventCount: Int,
     onDeletePastEvents: () -> Unit,
-    onOpenEmojiLibraries: () -> Unit
+    onOpenEmojiLibraries: () -> Unit,
+    onOpenAbout: () -> Unit
 ) {
     val groups = listOf(
         "Sort by" to listOf(
@@ -102,7 +104,7 @@ fun ViewOptionsMenu(
                     onOpenEmojiLibraries()
                 },
                 text = { Text("Emoji libraries") },
-                shape = MenuDefaults.itemShape(0, 2).shape,
+                shape = MenuDefaults.itemShape(0, 3).shape,
                 leadingIcon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null) }
             )
             DropdownMenuItem(
@@ -111,9 +113,18 @@ fun ViewOptionsMenu(
                     onDeletePastEvents()
                 },
                 text = { Text(if (pastEventCount > 0) "Delete past events ($pastEventCount)" else "Delete past events") },
-                shape = MenuDefaults.itemShape(1, 2).shape,
+                shape = MenuDefaults.itemShape(1, 3).shape,
                 enabled = pastEventCount > 0,
                 leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                onClick = {
+                    onDismiss()
+                    onOpenAbout()
+                },
+                text = { Text("About") },
+                shape = MenuDefaults.itemShape(2, 3).shape,
+                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
             )
         }
     }

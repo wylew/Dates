@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
@@ -21,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Palette
@@ -75,23 +77,12 @@ fun AddEventSheet(
     onSave: (DateEvent) -> Unit
 ) {
     var title by remember { mutableStateOf(eventToEdit?.title ?: "") }
+    // Set when Save is tapped without a title
+    var titleError by remember { mutableStateOf(false) }
     var description by remember { mutableStateOf(eventToEdit?.description ?: "") }
     var emoji by remember { mutableStateOf<String?>(eventToEdit?.emoji ?: if (eventToEdit?.imageUri == null) "📅" else null) }
     var imageUri by remember { mutableStateOf(eventToEdit?.imageUri) }
     val context = LocalContext.current
-    // New dates start with the calendar emoji in the default library's style
-    if (eventToEdit == null) {
-        LaunchedEffect(Unit) {
-            val library = AppSettings.currentDefaultEmojiLibrary(context)
-            val (defaultEmoji, defaultUri) = withContext(Dispatchers.Default) {
-                EmojiLibraries.resolve(context, library, "📅")
-            }
-            if (emoji == "📅" && imageUri == null) {
-                emoji = defaultEmoji
-                imageUri = defaultUri
-            }
-        }
-    }
     var selectedDateTime by remember { mutableStateOf(eventToEdit?.dateTime ?: LocalDateTime.now()) }
     var isAllDay by remember { mutableStateOf(eventToEdit?.isAllDay ?: false) }
     var useEmojiPattern by remember { mutableStateOf(eventToEdit?.useEmojiPattern ?: false) }
@@ -103,25 +94,73 @@ fun AddEventSheet(
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+
+    // Everything the form edits, to tell whether closing would lose changes
+    fun formState() = listOf(
+        title, description, emoji, imageUri, selectedDateTime, isAllDay,
+        useEmojiPattern, patternEmojis, selectedRecurrence, selectedColor
+    )
+    var savedForm by remember { mutableStateOf(formState()) }
+    val hasChanges = formState() != savedForm
+    val requestClose = { if (hasChanges) showDiscardConfirm = true else onDismiss() }
+
+    // New dates start with the calendar emoji in the default library's style
+    if (eventToEdit == null) {
+        LaunchedEffect(Unit) {
+            val library = AppSettings.currentDefaultEmojiLibrary(context)
+            val (defaultEmoji, defaultUri) = withContext(Dispatchers.Default) {
+                EmojiLibraries.resolve(context, library, "📅")
+            }
+            if (emoji == "📅" && imageUri == null) {
+                emoji = defaultEmoji
+                imageUri = defaultUri
+                savedForm = formState()
+            }
+        }
+    }
+
+    fun save() {
+        if (title.isBlank()) return
+        val event = (eventToEdit ?: DateEvent(title = title, dateTime = selectedDateTime)).copy(
+            title = title,
+            description = description,
+            dateTime = selectedDateTime,
+            isAllDay = isAllDay,
+            useEmojiPattern = useEmojiPattern,
+            patternEmojis = patternEmojis,
+            recurrence = selectedRecurrence,
+            emoji = emoji,
+            imageUri = imageUri,
+            customColor = selectedColor
+        )
+        onSave(event)
+    }
 
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
 
+    // Only Cancel / Save (or Back, which asks first if there are changes) close the editor, so an
+    // accidental swipe or tap outside can't throw away what was typed
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestClose,
         sheetState = rememberBottomSheetState(
             initialValue = SheetValue.Hidden,
             enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
         ),
+        sheetGesturesEnabled = false,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false, shouldDismissOnClickOutside = false),
         shape = ExpressiveSheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        dragHandle = null
     ) {
+        BackHandler(onBack = requestClose)
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 24.dp, bottom = 112.dp)
         ) {
             Text(
                 text = if (eventToEdit == null) "New Countdown" else "Edit Countdown",
@@ -133,8 +172,15 @@ fun AddEventSheet(
             // Title Input
             OutlinedTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = {
+                    title = it
+                    if (it.isNotBlank()) titleError = false
+                },
                 label = { Text("Event Title") },
+                isError = titleError,
+                supportingText = if (titleError) {
+                    { Text("Add a title to save") }
+                } else null,
                 leadingIcon = { Icon(Icons.Outlined.Title, contentDescription = null) },
                 shape = ExpressiveCompactCardShape,
                 modifier = Modifier.fillMaxWidth(),
@@ -164,20 +210,26 @@ fun AddEventSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Tonal Selection Cards (Emoji & Date)
+            // Tonal Selection Cards (Emoji & Date), matched to the taller card's height
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Emoji Trigger Card
                 ExpressiveTriggerCard(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                     onClick = { showEmojiPicker = true }
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 12.dp)
                     ) {
                         Text(
                             text = "EMOJI",
@@ -205,13 +257,17 @@ fun AddEventSheet(
 
                 // Date Trigger Card
                 ExpressiveTriggerCard(
-                    modifier = Modifier.weight(2f),
+                    modifier = Modifier
+                        .weight(2f)
+                        .fillMaxHeight(),
                     onClick = { showDatePicker = true }
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 12.dp)
                     ) {
                         Text(
                             text = "DATE",
@@ -372,15 +428,15 @@ fun AddEventSheet(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            val recurrenceOptions = remember {
-                listOf(
-                    "None" to Recurrence.None,
-                    "Daily" to Recurrence.Daily,
-                    "Weekly" to Recurrence.Weekly,
-                    "Monthly" to Recurrence.Monthly,
-                    "Yearly" to Recurrence.Yearly
-                )
-            }
+            // Custom builds its rule from the selected date (or keeps the one being edited)
+            val recurrenceOptions: List<Pair<String, () -> Recurrence>> = listOf(
+                "None" to { Recurrence.None },
+                "Daily" to { Recurrence.Daily },
+                "Weekly" to { Recurrence.Weekly },
+                "Monthly" to { Recurrence.Monthly },
+                "Yearly" to { Recurrence.Yearly },
+                "Custom" to { selectedRecurrence as? Recurrence.Custom ?: defaultCustomRecurrence(selectedDateTime) }
+            )
 
             // Expressive toggle buttons sized to their labels; scrolls sideways if they don't fit.
             // (ButtonGroup's overflow measuring crashes under fillMaxWidth in material3 1.5.0-beta02.)
@@ -390,10 +446,11 @@ fun AddEventSheet(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
             ) {
-                recurrenceOptions.forEachIndexed { index, (label, recurrence) ->
+                recurrenceOptions.forEachIndexed { index, (label, makeRecurrence) ->
+                    val recurrence = makeRecurrence()
                     ToggleButton(
                         checked = selectedRecurrence::class == recurrence::class,
-                        onCheckedChange = { selectedRecurrence = recurrence },
+                        onCheckedChange = { selectedRecurrence = makeRecurrence() },
                         shapes = when (index) {
                             0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                             recurrenceOptions.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -403,6 +460,15 @@ fun AddEventSheet(
                         Text(label, maxLines = 1)
                     }
                 }
+            }
+
+            (selectedRecurrence as? Recurrence.Custom)?.let { custom ->
+                Spacer(modifier = Modifier.height(12.dp))
+                CustomRecurrenceEditor(
+                    recurrence = custom,
+                    start = selectedDateTime,
+                    onChange = { selectedRecurrence = it }
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -498,52 +564,50 @@ fun AddEventSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Save / Update Pill Button
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        val event = (eventToEdit ?: DateEvent(
-                            title = title,
-                            dateTime = selectedDateTime,
-                            isAllDay = isAllDay,
-                            useEmojiPattern = useEmojiPattern,
-                            patternEmojis = patternEmojis,
-                            recurrence = selectedRecurrence,
-                            emoji = emoji,
-                            imageUri = imageUri,
-                            customColor = selectedColor
-                        )).copy(
-                            title = title,
-                            description = description,
-                            dateTime = selectedDateTime,
-                            isAllDay = isAllDay,
-                            useEmojiPattern = useEmojiPattern,
-                            patternEmojis = patternEmojis,
-                            recurrence = selectedRecurrence,
-                            emoji = emoji,
-                            imageUri = imageUri,
-                            customColor = selectedColor
-                        )
-                        onSave(event)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = ButtonDefaults.MediumContainerHeight),
-                enabled = title.isNotBlank(),
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.MediumContentPadding
-            ) {
-                Text(
-                    text = if (eventToEdit == null) "Create Countdown" else "Save Changes",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
+
+        // Floating actions, lower right
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ExtendedFloatingActionButton(
+                onClick = requestClose,
+                icon = { Icon(Icons.Default.Close, contentDescription = null) },
+                text = { Text("Cancel") },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ExtendedFloatingActionButton(
+                onClick = { if (title.isBlank()) titleError = true else save() },
+                icon = { Icon(Icons.Default.Check, contentDescription = null) },
+                text = { Text(if (eventToEdit == null) "Create" else "Save") }
+            )
+        }
+        }
+    }
+
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("Discard changes?") },
+            text = { Text(if (eventToEdit == null) "This new countdown won't be saved." else "Your changes to this countdown won't be saved.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDiscardConfirm = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            },
+            dismissButton = { TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep editing") } }
+        )
     }
 
     // Date Picker Dialog

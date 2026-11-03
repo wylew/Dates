@@ -29,7 +29,8 @@ object DateUtils {
     fun getNextOccurrence(event: DateEvent, now: LocalDateTime): LocalDateTime {
         val start = event.dateTime
         val threshold = if (event.isAllDay) now.toLocalDate().atStartOfDay() else now
-        if (!start.isBefore(threshold)) return start
+        // A custom rule decides its own first occurrence ("1st Thursday" from a Wednesday start)
+        if (!start.isBefore(threshold) && event.recurrence !is Recurrence.Custom) return start
 
         return when (val r = event.recurrence) {
             Recurrence.None -> start
@@ -86,11 +87,7 @@ object DateUtils {
         return when (r.frequency) {
             Frequency.DAILY -> stepFixed(start, threshold, ChronoUnit.DAYS, r.interval)
 
-            Frequency.WEEKLY -> {
-                val aligned = if (dow != null) start.with(TemporalAdjusters.nextOrSame(dow)) else start
-                if (!aligned.isBefore(threshold)) aligned
-                else stepFixed(aligned, threshold, ChronoUnit.WEEKS, r.interval)
-            }
+            Frequency.WEEKLY -> nextWeekly(start, r, threshold)
 
             Frequency.MONTHLY -> stepCalendar(start, threshold, ChronoUnit.MONTHS, r.interval) { period ->
                 dayInMonth(YearMonth.from(period), r.dayOfMonth, r.weekOfMonth, dow, fallbackDay = start.dayOfMonth)
@@ -104,6 +101,34 @@ object DateUtils {
             }
         }
     }
+
+    /**
+     * Weekly rules on one or more weekdays, every [Recurrence.Custom.interval] weeks counted from the
+     * start's week (Monday-based): the first matching day at or after both the start and [threshold].
+     */
+    private fun nextWeekly(start: LocalDateTime, r: Recurrence.Custom, threshold: LocalDateTime): LocalDateTime {
+        val days = weeklyDays(r, start)
+        val step = r.interval.coerceAtLeast(1).toLong()
+        val firstWeek = start.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atTime(start.toLocalTime())
+        var k = (ChronoUnit.WEEKS.between(firstWeek, threshold) / step - 1).coerceAtLeast(0)
+        repeat(2_000) {
+            val week = firstWeek.plusWeeks(k * step)
+            for (day in days) {
+                val candidate = week.plusDays(day - 1L)
+                if (!candidate.isBefore(threshold) && !candidate.isBefore(start)) return candidate
+            }
+            k++
+        }
+        return start
+    }
+
+    /** The weekdays (1-7, sorted) a weekly custom rule repeats on, defaulting to the start's weekday */
+    fun weeklyDays(r: Recurrence.Custom, start: LocalDateTime): List<Int> =
+        r.daysOfWeek.ifEmpty { listOfNotNull(r.dayOfWeek) }
+            .ifEmpty { listOf(start.dayOfWeek.value) }
+            .map { it.coerceIn(1, 7) }
+            .distinct()
+            .sorted()
 
     /**
      * Resolves a day inside [ym]:
@@ -150,9 +175,10 @@ object DateUtils {
                     Frequency.YEARLY -> "Yearly"
                 }
             } else "Every ${recurrence.interval} ${unit}s"
-            val day = recurrence.dayOfWeek?.let {
-                DayOfWeek.of(it.coerceIn(1, 7)).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
-            }
+            fun dayName(d: Int) =
+                DayOfWeek.of(d.coerceIn(1, 7)).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
+            val day = recurrence.dayOfWeek?.let(::dayName)
+            val days = recurrence.daysOfWeek.takeIf { it.size > 1 }?.distinct()?.sorted()?.joinToString(", ") { dayName(it) }
             val month = recurrence.monthOfYear?.let {
                 java.time.Month.of(it.coerceIn(1, 12)).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
             }
@@ -163,6 +189,7 @@ object DateUtils {
                 else -> "${recurrence.weekOfMonth}th"
             }
             val detail = when {
+                days != null -> "on $days"
                 ordinal != null && day != null -> "on the $ordinal $day" + (month?.let { " of $it" } ?: "")
                 recurrence.dayOfMonth != null && recurrence.dayOfMonth < 0 -> "on the last day" + (month?.let { " of $it" } ?: "")
                 recurrence.dayOfMonth != null -> "on " + (month?.let { "$it " } ?: "day ") + recurrence.dayOfMonth

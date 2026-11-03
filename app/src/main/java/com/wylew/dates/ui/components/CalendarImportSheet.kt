@@ -34,6 +34,7 @@ import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.CalendarIntegrationHelper
 import com.wylew.dates.util.DateUtils
 import com.wylew.dates.util.EmojiLibraries
+import com.wylew.dates.util.ImportDuplicates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,8 +44,10 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CalendarImportSheet(
+    existingEvents: List<DateEvent>,
     onDismiss: () -> Unit,
-    onImportEvents: (List<DateEvent>) -> Unit,
+    /** New dates to add, and existing dates that were matched to their calendar event (to remember its source) */
+    onImportEvents: (newEvents: List<DateEvent>, linkedExisting: List<DateEvent>) -> Unit,
 ) {
     val context = LocalContext.current
     var hasPermission by remember {
@@ -69,7 +72,13 @@ fun CalendarImportSheet(
     var isLoadingEvents by remember { mutableStateOf(false) }
     // Set when some chosen events are past one-offs; holds the rest awaiting confirmation
     var pendingImport by remember { mutableStateOf<List<DateEvent>?>(null) }
+    var pendingLinks by remember { mutableStateOf<List<DateEvent>>(emptyList()) }
     var skippedPastCount by remember { mutableIntStateOf(0) }
+    // Each calendar event as it would be imported, and whether it's already in the list
+    var candidates by remember { mutableStateOf<Map<Long, DateEvent>>(emptyMap()) }
+    var verdicts by remember { mutableStateOf<Map<Long, ImportDuplicates.Verdict>>(emptyMap()) }
+    val newEventIds = calendarEvents.map { it.id }.filter { verdicts[it]?.kind == ImportDuplicates.Kind.NEW }.toSet()
+    val alreadyImportedCount = calendarEvents.size - newEventIds.size
 
     val scope = rememberCoroutineScope()
 
@@ -91,21 +100,33 @@ fun CalendarImportSheet(
         }
     }
 
+    /** Imports the chosen events that aren't already in the list; duplicates are always skipped */
     fun requestImport(sysEvents: List<CalendarIntegrationHelper.SystemCalendarEvent>) {
         val today = LocalDate.now()
-        scope.launch {
-            val converted = withContext(Dispatchers.Default) {
-                withImportEmoji(sysEvents.map { CalendarIntegrationHelper.convertToDateEvent(it) })
-            }
-            val (pastOneOffs, toImport) = converted
-                .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
-            if (pastOneOffs.isEmpty()) {
-                onImportEvents(toImport)
-            } else {
-                skippedPastCount = pastOneOffs.size
-                pendingImport = toImport
-            }
+        val chosen = sysEvents.filter { it.id in newEventIds }.mapNotNull { candidates[it.id] }
+        // Existing dates matched by looks learn their calendar source, so future imports match exactly
+        val links = verdicts.values.mapNotNull { it.link }
+        val (pastOneOffs, toImport) = chosen
+            .partition { it.recurrence == Recurrence.None && (it.endDateTime ?: it.dateTime).toLocalDate().isBefore(today) }
+        if (pastOneOffs.isEmpty()) {
+            onImportEvents(toImport, links)
+        } else {
+            skippedPastCount = pastOneOffs.size
+            pendingImport = toImport
+            pendingLinks = links
         }
+    }
+
+    // Classify each calendar event against the list (again whenever the list changes)
+    LaunchedEffect(calendarEvents, existingEvents) {
+        if (calendarEvents.isEmpty()) return@LaunchedEffect
+        val converted = withContext(Dispatchers.Default) {
+            withImportEmoji(calendarEvents.map { CalendarIntegrationHelper.convertToDateEvent(it) })
+        }
+        val checked = withContext(Dispatchers.Default) { ImportDuplicates.check(converted, existingEvents) }
+        candidates = calendarEvents.zip(converted).associate { (sys, event) -> sys.id to event }
+        verdicts = calendarEvents.zip(checked).associate { (sys, verdict) -> sys.id to verdict }
+        selectedEventIds = selectedEventIds.filterTo(mutableSetOf()) { verdicts[it]?.kind == ImportDuplicates.Kind.NEW }
     }
 
     LaunchedEffect(hasPermission) {
@@ -117,6 +138,7 @@ fun CalendarImportSheet(
     LaunchedEffect(selectedCalendar) {
         selectedCalendar?.let { cal ->
             isLoadingEvents = true
+            verdicts = emptyMap()
             val events = CalendarIntegrationHelper.getEventsForCalendar(context, cal.id)
             calendarEvents = events
             selectedEventIds = events.asSequence().map { it.id }.toSet()
@@ -258,7 +280,7 @@ fun CalendarImportSheet(
                 }
             } else {
                 // Events List State
-                if (isLoadingEvents) {
+                if (isLoadingEvents || (calendarEvents.isNotEmpty() && verdicts.size < calendarEvents.size)) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -292,7 +314,11 @@ fun CalendarImportSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "${calendarEvents.size} events found",
+                                text = if (alreadyImportedCount > 0) {
+                                    "${calendarEvents.size} events · $alreadyImportedCount already in your list"
+                                } else {
+                                    "${calendarEvents.size} events found"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -300,7 +326,7 @@ fun CalendarImportSheet(
                             // Quick bulk action buttons
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(
-                                    onClick = { selectedEventIds = calendarEvents.asSequence().map { it.id }.toSet() }
+                                    onClick = { selectedEventIds = newEventIds }
                                 ) {
                                     Text("Select All")
                                 }
@@ -319,12 +345,13 @@ fun CalendarImportSheet(
                             onClick = {
                                 requestImport(calendarEvents)
                             },
+                            enabled = newEventIds.isNotEmpty(),
                             modifier = Modifier.fillMaxWidth(),
                             shapes = ButtonDefaults.shapes()
                         ) {
                             Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                             Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-                            Text("Import All (${calendarEvents.size} Events)")
+                            Text(if (newEventIds.isEmpty()) "Everything is already imported" else "Import All (${newEventIds.size} new)")
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -362,17 +389,26 @@ fun CalendarImportSheet(
                                     ev.nextInstanceStart != null -> "Next: $whenStr · $repeatLabel"
                                     else -> "$whenStr · $repeatLabel"
                                 }
+                                val duplicateLabel = when (verdicts[ev.id]?.kind) {
+                                    ImportDuplicates.Kind.ALREADY_IMPORTED -> "Already in your list"
+                                    ImportDuplicates.Kind.DUPLICATE_IN_IMPORT -> "Duplicate of another event here"
+                                    else -> null
+                                }
                                 ListItem(
                                     selected = isSelected,
                                     onClick = toggle,
+                                    enabled = duplicateLabel == null,
                                     shapes = ListItemDefaults.segmentedShapes(index, calendarEvents.size),
                                     colors = ListItemDefaults.segmentedColors(),
                                     leadingContent = {
-                                        Checkbox(checked = isSelected, onCheckedChange = { toggle() })
+                                        Checkbox(checked = isSelected, onCheckedChange = { toggle() }, enabled = duplicateLabel == null)
                                     },
                                     supportingContent = {
                                         Column {
                                             Text(dateStr)
+                                            if (duplicateLabel != null) {
+                                                Text(duplicateLabel, color = MaterialTheme.colorScheme.primary)
+                                            }
                                             if (ev.description.isNotBlank()) {
                                                 Text(ev.description, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
@@ -426,7 +462,7 @@ fun CalendarImportSheet(
                 } else {
                     TextButton(onClick = {
                         pendingImport = null
-                        onImportEvents(remaining)
+                        onImportEvents(remaining, pendingLinks)
                     }) { Text("Import ${remaining.size}") }
                 }
             },

@@ -70,10 +70,14 @@ object RRuleParser {
         if (rule == null) return Recurrence.None
 
         val single = rule.byDay.singleOrNull()
+        // Several plain weekdays ("TU,TH" = every Tuesday and Thursday)
+        val multipleDays = if (rule.byDay.size > 1 && rule.byDay.all { it.first == null }) {
+            rule.byDay.map { it.second }.distinct().sorted()
+        } else emptyList()
         val dayOfWeek = when {
             single != null -> single.second
-            // Multi-day weekly rules ("MO,WE,FR") can't be represented; keep the anchor's weekday.
-            rule.byDay.size > 1 -> anchor.dayOfWeek.value
+            // Several days with ordinals ("1MO,3MO") can't be represented; keep the anchor's weekday.
+            rule.byDay.size > 1 && multipleDays.isEmpty() -> anchor.dayOfWeek.value
             else -> null
         }
         val weekOfMonth = single?.first ?: rule.bySetPos?.takeIf { single != null }
@@ -82,6 +86,7 @@ object RRuleParser {
             (rule.byMonth == null || rule.byMonth == anchor.monthValue) &&
                 (rule.byMonthDay == null || rule.byMonthDay == anchor.dayOfMonth) &&
                 weekOfMonth == null &&
+                multipleDays.isEmpty() &&
                 (dayOfWeek == null || (rule.frequency == Frequency.WEEKLY && dayOfWeek == anchor.dayOfWeek.value))
 
         if (rule.interval == 1 && restatesAnchor) {
@@ -99,7 +104,8 @@ object RRuleParser {
             dayOfWeek = dayOfWeek,
             dayOfMonth = if (weekOfMonth != null) null else rule.byMonthDay,
             weekOfMonth = weekOfMonth,
-            monthOfYear = rule.byMonth
+            monthOfYear = rule.byMonth,
+            daysOfWeek = multipleDays
         )
     }
 

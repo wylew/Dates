@@ -27,4 +27,17 @@ object AppSettings {
     suspend fun setDefaultEmojiLibrary(context: Context, library: EmojiLibrary) {
         context.settingsDataStore.edit { it[DEFAULT_EMOJI_LIBRARY] = library.name }
     }
+
+    /** An enum setting stored by name under [key]; unknown or missing values read as [default] */
+    inline fun <reified E : Enum<E>> enumSetting(context: Context, key: String, default: E): Flow<E> =
+        settingsData(context).map { prefs ->
+            prefs[stringPreferencesKey(key)]?.let { name -> enumValues<E>().find { it.name == name } } ?: default
+        }
+
+    suspend fun <E : Enum<E>> setEnumSetting(context: Context, key: String, value: E) {
+        context.settingsDataStore.edit { it[stringPreferencesKey(key)] = value.name }
+    }
+
+    @PublishedApi
+    internal fun settingsData(context: Context): Flow<Preferences> = context.settingsDataStore.data
 }
