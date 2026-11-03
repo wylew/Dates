@@ -36,7 +36,9 @@ data class DateEvent(
     val sourceUid: String? = null,
     /** The CalendarContract calendar and event row IDs (this device only), used when there's no UID */
     val sourceCalendarId: Long? = null,
-    val sourceEventId: Long? = null
+    val sourceEventId: Long? = null,
+    /** How the date looked when it last synced with the sync calendar; null if it hasn't synced */
+    val syncFingerprint: String? = null
 )
 
 @Serializable

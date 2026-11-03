@@ -37,6 +37,8 @@ object CalendarIntegrationHelper {
         val rrule: String?,
         /** iCal UID (UID_2445), when the calendar provides one */
         val uid: String? = null,
+        /** The event's color from the account's palette (EVENT_COLOR_KEY), if it has its own */
+        val colorKey: String? = null,
         /** Start of the next upcoming instance from the Instances table, if the event repeats. */
         val nextInstanceStart: Long? = null,
         /** Start of the most recent past instance, used when a series has ended. */
@@ -99,7 +101,16 @@ object CalendarIntegrationHelper {
      * Those are filtered out here, and each recurring series gets its next real occurrence
      * from the Instances table so the import shows (and stores) the upcoming date.
      */
-    fun getEventsForCalendar(context: Context, calendarId: Long): List<SystemCalendarEvent> {
+    fun getEventsForCalendar(context: Context, calendarId: Long): List<SystemCalendarEvent> =
+        try {
+            queryEvents(context, calendarId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+
+    /** Like [getEventsForCalendar], but throws when the calendar can't be read instead of returning nothing */
+    fun queryEvents(context: Context, calendarId: Long): List<SystemCalendarEvent> {
         val events = mutableListOf<SystemCalendarEvent>()
         val projection = arrayOf(
             CalendarContract.Events._ID,
@@ -111,7 +122,8 @@ object CalendarIntegrationHelper {
             CalendarContract.Events.DURATION,
             CalendarContract.Events.ALL_DAY,
             CalendarContract.Events.RRULE,
-            CalendarContract.Events.UID_2445
+            CalendarContract.Events.UID_2445,
+            CalendarContract.Events.EVENT_COLOR_KEY
         )
         val selection = buildString {
             append("${CalendarContract.Events.CALENDAR_ID} = ?")
@@ -122,41 +134,39 @@ object CalendarIntegrationHelper {
         }
         val selectionArgs = arrayOf(calendarId.toString())
 
-        try {
-            context.contentResolver.query(
-                CalendarContract.Events.CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                "${CalendarContract.Events.DTSTART} ASC"
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val dtstart = cursor.long(CalendarContract.Events.DTSTART) ?: -1L
-                    if (dtstart < 0) continue
-                    val allDay = (cursor.int(CalendarContract.Events.ALL_DAY) ?: 0) == 1
-                    // Recurring events store DURATION and leave DTEND null (getLong would return 0 → 1970).
-                    val dtend = cursor.long(CalendarContract.Events.DTEND)?.takeIf { it > 0 }
-                        ?: RRuleParser.parseDuration(cursor.string(CalendarContract.Events.DURATION))
-                            ?.let { dtstart + it.toMillis() }
-                        ?: if (allDay) dtstart + DAY_MILLIS else dtstart
+        val cursor = context.contentResolver.query(
+            CalendarContract.Events.CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            "${CalendarContract.Events.DTSTART} ASC"
+        ) ?: error("Calendar $calendarId couldn't be read")
+        cursor.use {
+            while (cursor.moveToNext()) {
+                val dtstart = cursor.long(CalendarContract.Events.DTSTART) ?: -1L
+                if (dtstart < 0) continue
+                val allDay = (cursor.int(CalendarContract.Events.ALL_DAY) ?: 0) == 1
+                // Recurring events store DURATION and leave DTEND null (getLong would return 0 → 1970).
+                val dtend = cursor.long(CalendarContract.Events.DTEND)?.takeIf { it > 0 }
+                    ?: RRuleParser.parseDuration(cursor.string(CalendarContract.Events.DURATION))
+                        ?.let { dtstart + it.toMillis() }
+                    ?: if (allDay) dtstart + DAY_MILLIS else dtstart
 
-                    events.add(
-                        SystemCalendarEvent(
-                            id = cursor.long(CalendarContract.Events._ID) ?: 0L,
-                            calendarId = cursor.long(CalendarContract.Events.CALENDAR_ID) ?: calendarId,
-                            title = cursor.string(CalendarContract.Events.TITLE)?.takeIf { it.isNotBlank() } ?: "Untitled Event",
-                            description = cursor.string(CalendarContract.Events.DESCRIPTION) ?: "",
-                            dtstart = dtstart,
-                            dtend = dtend,
-                            allDay = allDay,
-                            rrule = cursor.string(CalendarContract.Events.RRULE)?.takeIf { it.isNotBlank() },
-                            uid = cursor.string(CalendarContract.Events.UID_2445)?.takeIf { it.isNotBlank() }
-                        )
+                events.add(
+                    SystemCalendarEvent(
+                        id = cursor.long(CalendarContract.Events._ID) ?: 0L,
+                        calendarId = cursor.long(CalendarContract.Events.CALENDAR_ID) ?: calendarId,
+                        title = cursor.string(CalendarContract.Events.TITLE)?.takeIf { it.isNotBlank() } ?: "Untitled Event",
+                        description = cursor.string(CalendarContract.Events.DESCRIPTION) ?: "",
+                        dtstart = dtstart,
+                        dtend = dtend,
+                        allDay = allDay,
+                        rrule = cursor.string(CalendarContract.Events.RRULE)?.takeIf { it.isNotBlank() },
+                        uid = cursor.string(CalendarContract.Events.UID_2445)?.takeIf { it.isNotBlank() },
+                        colorKey = cursor.string(CalendarContract.Events.EVENT_COLOR_KEY)?.takeIf { it.isNotBlank() }
                     )
-                }
+                )
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
 
         val cutoff = System.currentTimeMillis() - DAY_MILLIS

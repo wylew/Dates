@@ -110,6 +110,40 @@ object RRuleParser {
     }
 
     /**
+     * The RRULE (without the "RRULE:" prefix) for [recurrence], or null when it doesn't repeat.
+     * [start] is the event's first occurrence, which simple rules take their day from. The
+     * inverse of [toRecurrence]: parsing the result with the same start gives the rule back.
+     */
+    fun format(recurrence: Recurrence, start: LocalDateTime): String? {
+        val dayCodeOf = dayCodes.entries.associate { (code, day) -> day to code }
+        return when (recurrence) {
+            Recurrence.None -> null
+            Recurrence.Daily -> "FREQ=DAILY"
+            Recurrence.Weekly -> "FREQ=WEEKLY"
+            Recurrence.Monthly -> "FREQ=MONTHLY"
+            Recurrence.Yearly -> "FREQ=YEARLY"
+            is Recurrence.Custom -> buildList {
+                add("FREQ=${recurrence.frequency.name}")
+                if (recurrence.interval > 1) add("INTERVAL=${recurrence.interval}")
+                when (recurrence.frequency) {
+                    Frequency.DAILY -> Unit
+                    Frequency.WEEKLY ->
+                        add("BYDAY=" + DateUtils.weeklyDays(recurrence, start).joinToString(",") { dayCodeOf.getValue(it) })
+                    Frequency.MONTHLY, Frequency.YEARLY -> {
+                        if (recurrence.frequency == Frequency.YEARLY) add("BYMONTH=${recurrence.monthOfYear ?: start.monthValue}")
+                        val nth = recurrence.weekOfMonth
+                        if (nth != null) {
+                            add("BYDAY=$nth${dayCodeOf.getValue((recurrence.dayOfWeek ?: start.dayOfWeek.value).coerceIn(1, 7))}")
+                        } else {
+                            add("BYMONTHDAY=${recurrence.dayOfMonth ?: start.dayOfMonth}")
+                        }
+                    }
+                }
+            }.joinToString(";")
+        }
+    }
+
+    /**
      * Parses an RFC 5545 DURATION (CalendarContract.Events.DURATION), which recurring
      * events use instead of DTEND. Handles "P1D", "PT1H30M", "P3600S", "P1W", "-PT15M".
      */

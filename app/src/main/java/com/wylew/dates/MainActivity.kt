@@ -3,6 +3,7 @@ package com.wylew.dates
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -22,6 +23,9 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,6 +49,8 @@ import com.wylew.dates.ui.ThemeMode
 import com.wylew.dates.ui.components.AddEventSheet
 import com.wylew.dates.ui.components.AboutSheet
 import com.wylew.dates.ui.components.CalendarImportSheet
+import com.wylew.dates.ui.components.CalendarSyncSheet
+import com.wylew.dates.sync.CalendarSync
 import com.wylew.dates.ui.components.EmojiLibraryManagerSheet
 import com.wylew.dates.ui.components.EventCard
 import com.wylew.dates.ui.components.EventDetailsSheet
@@ -89,6 +95,11 @@ class MainActivity : ComponentActivity() {
             OpenMojiManager.deleteLegacyCopies(applicationContext)
         }
 
+        // Content-change jobs end with each run and with restarts; make sure sync is watching
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (CalendarSync.currentTarget(applicationContext) != null) CalendarSync.scheduleWatch(applicationContext)
+        }
+
         enableEdgeToEdge()
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
@@ -131,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 var showDeletePastConfirm by remember { mutableStateOf(false) }
                 var showEmojiLibraries by remember { mutableStateOf(false) }
                 var showAbout by remember { mutableStateOf(false) }
+                var showCalendarSync by remember { mutableStateOf(false) }
+                val refreshScope = rememberCoroutineScope()
+                var refreshing by remember { mutableStateOf(false) }
+                val pullState = rememberPullToRefreshState()
+                val syncTarget by remember { CalendarSync.target(applicationContext) }.collectAsState(initial = null)
                 val pastEvents = remember(events) { events.filter(DateUtils::isPast) }
                 var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
                 BackHandler(fabMenuExpanded) { fabMenuExpanded = false }
@@ -169,6 +185,7 @@ class MainActivity : ComponentActivity() {
                                         pastEventCount = pastEvents.size,
                                         onDeletePastEvents = { showDeletePastConfirm = true },
                                         onOpenEmojiLibraries = { showEmojiLibraries = true },
+                                        onOpenCalendarSync = { showCalendarSync = true },
                                         onOpenAbout = { showAbout = true },
                                         themeMode = themeMode,
                                         onThemeMode = viewModel::setThemeMode
@@ -215,137 +232,176 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
-                    if (events.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding)
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Surface(
-                                shape = ExpressiveCardShape,
-                                color = MaterialTheme.colorScheme.surfaceContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(24.dp)
-                                        .fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(64.dp)
-                                            .clip(MaterialShapes.Cookie9Sided.toShape())
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.CalendarMonth,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(32.dp)
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Text(
-                                        text = "No Countdowns Yet",
-                                        style = MaterialTheme.typography.titleLargeEmphasized,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        textAlign = TextAlign.Center
-                                    )
-
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    Text(
-                                        text = "Start tracking birthdays, vacations, milestones, or recurring deadlines.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
-
-                                    Spacer(modifier = Modifier.height(20.dp))
-
-                                    Button(
-                                        onClick = { showAddSheet = true },
-                                        shapes = ButtonDefaults.shapes()
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                                        Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-                                        Text("Create Countdown")
+                    PullToRefreshBox(
+                        isRefreshing = refreshing,
+                        onRefresh = {
+                            refreshScope.launch {
+                                refreshing = true
+                                val started = System.currentTimeMillis()
+                                val synced = CalendarSync.refresh(applicationContext)
+                                // A sync with nothing to do is near-instant; keep the indicator up long enough to see
+                                kotlinx.coroutines.delay((700 - (System.currentTimeMillis() - started)).coerceAtLeast(0))
+                                if (!synced) {
+                                    CalendarSync.status.value.error?.let {
+                                        Toast.makeText(this@MainActivity, it, Toast.LENGTH_LONG).show()
                                     }
                                 }
+                                refreshing = false
                             }
-                        }
-                    } else {
-                        // Expressive segmented lists: upcoming and past each join into one group
-                        val outerCorner = when (listDensity) {
-                            ListDensity.EXPANDED -> 28.dp
-                            ListDensity.COMPACT -> 20.dp
-                            ListDensity.SMALL -> 16.dp
-                        }
-                        val innerCorner = if (listDensity == ListDensity.SMALL) 4.dp else 8.dp
-                        val upcomingEvents = events.filterNot(DateUtils::isPast)
-                        fun groupShape(index: Int, count: Int): RoundedCornerShape {
-                            val top = if (index == 0) outerCorner else innerCorner
-                            val bottom = if (index == count - 1) outerCorner else innerCorner
-                            return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
-                        }
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding),
-                            contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 120.dp),
-                            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
-                        ) {
-                            itemsIndexed(upcomingEvents, key = { _, event -> event.id }) { index, event ->
-                                EventCard(
-                                    event = event,
-                                    onClick = { selectedEventForDetails = event },
-                                    density = listDensity,
-                                    shape = groupShape(index, upcomingEvents.size),
-                                    modifier = Modifier.animateItem()
-                                )
-                            }
-                            if (pastEvents.isNotEmpty()) {
-                                item(key = "past-header") {
-                                    Row(
+                        },
+                        // Pulling down syncs with the calendar, so it only works while sync is on
+                        enabled = syncTarget != null,
+                        state = pullState,
+                        indicator = {
+                            PullToRefreshDefaults.LoadingIndicator(
+                                state = pullState,
+                                isRefreshing = refreshing,
+                                modifier = Modifier.align(Alignment.TopCenter)
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        if (events.isEmpty()) {
+                            // Scrollable so pulling down to sync works with no dates yet
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                item {
+                                    Box(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 8.dp, top = if (upcomingEvents.isEmpty()) 0.dp else 16.dp)
-                                            .animateItem(),
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .fillParentMaxSize()
+                                            .padding(24.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            "Days past",
-                                            style = MaterialTheme.typography.titleMediumEmphasized,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TextButton(
-                                            onClick = { showDeletePastConfirm = true },
-                                            shapes = ButtonDefaults.shapes()
+                                        Surface(
+                                            shape = ExpressiveCardShape,
+                                            color = MaterialTheme.colorScheme.surfaceContainer,
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                                            Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
-                                            Text("Delete all")
+                                            Column(
+                                                modifier = Modifier
+                                                    .padding(24.dp)
+                                                    .fillMaxWidth(),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(64.dp)
+                                                        .clip(MaterialShapes.Cookie9Sided.toShape())
+                                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Outlined.CalendarMonth,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.size(32.dp)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.height(16.dp))
+
+                                                Text(
+                                                    text = "No Countdowns Yet",
+                                                    style = MaterialTheme.typography.titleLargeEmphasized,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                Text(
+                                                    text = "Start tracking birthdays, vacations, milestones, or recurring deadlines.",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                Spacer(modifier = Modifier.height(20.dp))
+
+                                                Button(
+                                                    onClick = { showAddSheet = true },
+                                                    shapes = ButtonDefaults.shapes()
+                                                ) {
+                                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                                    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                                                    Text("Create Countdown")
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                                itemsIndexed(pastEvents, key = { _, event -> event.id }) { index, event ->
+                            }
+                        } else {
+                            // Expressive segmented lists: upcoming and past each join into one group
+                            val outerCorner = when (listDensity) {
+                                ListDensity.EXPANDED -> 28.dp
+                                ListDensity.COMPACT -> 20.dp
+                                ListDensity.SMALL -> 16.dp
+                            }
+                            val innerCorner = if (listDensity == ListDensity.SMALL) 4.dp else 8.dp
+                            val upcomingEvents = events.filterNot(DateUtils::isPast)
+                            fun groupShape(index: Int, count: Int): RoundedCornerShape {
+                                val top = if (index == 0) outerCorner else innerCorner
+                                val bottom = if (index == count - 1) outerCorner else innerCorner
+                                return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
+                            }
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize(),
+                                contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 120.dp),
+                                verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
+                            ) {
+                                itemsIndexed(upcomingEvents, key = { _, event -> event.id }) { index, event ->
                                     EventCard(
                                         event = event,
                                         onClick = { selectedEventForDetails = event },
                                         density = listDensity,
-                                        shape = groupShape(index, pastEvents.size),
+                                        shape = groupShape(index, upcomingEvents.size),
                                         modifier = Modifier.animateItem()
                                     )
                                 }
+                                if (pastEvents.isNotEmpty()) {
+                                    item(key = "past-header") {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 8.dp, top = if (upcomingEvents.isEmpty()) 0.dp else 16.dp)
+                                                .animateItem(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "Days past",
+                                                style = MaterialTheme.typography.titleMediumEmphasized,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TextButton(
+                                                onClick = { showDeletePastConfirm = true },
+                                                shapes = ButtonDefaults.shapes()
+                                            ) {
+                                                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                                Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                                                Text("Delete all")
+                                            }
+                                        }
+                                    }
+                                    itemsIndexed(pastEvents, key = { _, event -> event.id }) { index, event ->
+                                        EventCard(
+                                            event = event,
+                                            onClick = { selectedEventForDetails = event },
+                                            density = listDensity,
+                                            shape = groupShape(index, pastEvents.size),
+                                            modifier = Modifier.animateItem()
+                                        )
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    if (showCalendarSync) {
+                        CalendarSyncSheet(dateCount = events.size, onDismiss = { showCalendarSync = false })
                     }
 
                     if (showAbout) {
@@ -363,7 +419,13 @@ class MainActivity : ComponentActivity() {
                             title = {
                                 Text(if (pastEvents.size == 1) "Delete 1 past event?" else "Delete ${pastEvents.size} past events?")
                             },
-                            text = { Text("One-time events that have already happened will be permanently removed. Repeating events are kept.") },
+                            text = {
+                                Text(
+                                    "One-time events that have already happened will be permanently removed" +
+                                        (syncTarget?.let { " from Dates and from ${it.displayName}" } ?: "") +
+                                        ". Repeating events are kept."
+                                )
+                            },
                             confirmButton = {
                                 TextButton(
                                     onClick = {
@@ -432,6 +494,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Fetch what changed on other devices or the web while the app was closed
+        CalendarSync.request(this, fromGoogle = true)
     }
 
     override fun onNewIntent(intent: Intent) {

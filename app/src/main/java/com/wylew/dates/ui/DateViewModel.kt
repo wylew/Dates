@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wylew.dates.model.DateEvent
 import com.wylew.dates.model.DateEventRepository
+import com.wylew.dates.sync.CalendarSync
 import com.wylew.dates.util.AppSettings
 import com.wylew.dates.util.DateUtils
 import com.wylew.dates.widget.WidgetUpdater
@@ -72,59 +73,41 @@ class DateViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.events.collect {
                 WidgetUpdater.updateAllWidgets(getApplication())
+                // Every change reaches the sync calendar (sync's own saves end in a quiet pass)
+                CalendarSync.request(getApplication())
             }
         }
     }
 
-    fun addEvent(event: DateEvent) {
-        viewModelScope.launch {
-            val current = events.value.toMutableList()
-            current.add(event)
-            repository.saveEvents(current)
-            WidgetUpdater.updateAllWidgets(getApplication())
-        }
+    private fun edit(transform: (List<DateEvent>) -> List<DateEvent>) {
+        viewModelScope.launch { repository.update(transform) }
     }
+
+    fun addEvent(event: DateEvent) = edit { it + event }
 
     /** Adds [newEvents] and replaces [updated] (matched by id) in a single save */
     fun importEvents(newEvents: List<DateEvent>, updated: List<DateEvent>) {
-        viewModelScope.launch {
-            val byId = updated.associateBy { it.id }
-            repository.saveEvents(events.value.map { byId[it.id] ?: it } + newEvents)
-            WidgetUpdater.updateAllWidgets(getApplication())
-        }
+        val byId = updated.associateBy { it.id }
+        edit { current -> current.map { byId[it.id] ?: it } + newEvents }
     }
 
-    fun addEvents(newEvents: List<DateEvent>) {
-        viewModelScope.launch {
-            val current = events.value.toMutableList()
-            current.addAll(newEvents)
-            repository.saveEvents(current)
-            WidgetUpdater.updateAllWidgets(getApplication())
-        }
+    fun addEvents(newEvents: List<DateEvent>) = edit { it + newEvents }
+
+    fun updateEvent(updatedEvent: DateEvent) = edit { current ->
+        current.map { if (it.id == updatedEvent.id) updatedEvent else it }
     }
 
-    fun updateEvent(updatedEvent: DateEvent) {
-        viewModelScope.launch {
-            val current = events.value.map {
-                if (it.id == updatedEvent.id) updatedEvent else it
-            }
-            repository.saveEvents(current)
-            WidgetUpdater.updateAllWidgets(getApplication())
-        }
-    }
+    fun deleteEvent(eventId: String) = delete { it.id == eventId }
 
-    fun deleteEvent(eventId: String) {
-        viewModelScope.launch {
-            val current = events.value.filter { it.id != eventId }
-            repository.saveEvents(current)
-            WidgetUpdater.updateAllWidgets(getApplication())
-        }
-    }
+    fun deletePastEvents() = delete(DateUtils::isPast)
 
-    fun deletePastEvents() {
+    /** Deletes matching dates, and their events in the sync calendar */
+    private fun delete(predicate: (DateEvent) -> Boolean) {
         viewModelScope.launch {
-            repository.saveEvents(events.value.filterNot(DateUtils::isPast))
-            WidgetUpdater.updateAllWidgets(getApplication())
+            val removed = repository.events.first().filter(predicate)
+            CalendarSync.markDeleted(getApplication(), removed.map { it.id })
+            val ids = removed.map { it.id }.toSet()
+            repository.update { current -> current.filterNot { it.id in ids } }
         }
     }
 

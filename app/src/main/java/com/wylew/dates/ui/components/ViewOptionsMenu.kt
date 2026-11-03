@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.EmojiEmotions
@@ -50,6 +51,7 @@ fun ViewOptionsMenu(
     pastEventCount: Int,
     onDeletePastEvents: () -> Unit,
     onOpenEmojiLibraries: () -> Unit,
+    onOpenCalendarSync: () -> Unit,
     onOpenAbout: () -> Unit
 ) {
     val groups = listOf(
@@ -104,8 +106,17 @@ fun ViewOptionsMenu(
                     onOpenEmojiLibraries()
                 },
                 text = { Text("Emoji libraries") },
-                shape = MenuDefaults.itemShape(0, 3).shape,
+                shape = MenuDefaults.itemShape(0, 4).shape,
                 leadingIcon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null) }
+            )
+            DropdownMenuItem(
+                onClick = {
+                    onDismiss()
+                    onOpenCalendarSync()
+                },
+                text = { Text("Calendar sync") },
+                shape = MenuDefaults.itemShape(1, 4).shape,
+                leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
             )
             DropdownMenuItem(
                 onClick = {
@@ -113,7 +124,7 @@ fun ViewOptionsMenu(
                     onDeletePastEvents()
                 },
                 text = { Text(if (pastEventCount > 0) "Delete past events ($pastEventCount)" else "Delete past events") },
-                shape = MenuDefaults.itemShape(1, 3).shape,
+                shape = MenuDefaults.itemShape(2, 4).shape,
                 enabled = pastEventCount > 0,
                 leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) }
             )
@@ -123,7 +134,7 @@ fun ViewOptionsMenu(
                     onOpenAbout()
                 },
                 text = { Text("About") },
-                shape = MenuDefaults.itemShape(2, 3).shape,
+                shape = MenuDefaults.itemShape(3, 4).shape,
                 leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
             )
         }

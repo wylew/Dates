@@ -26,4 +26,22 @@ class DateEventRepository(private val context: Context) {
             preferences[EVENTS_KEY] = Json.encodeToString(events)
         }
     }
+
+    /**
+     * Replaces the saved list with [transform] of it in one step, so changes made at the same time
+     * (an edit in the app while calendar sync writes) can't overwrite each other. Returns whether
+     * anything changed.
+     */
+    suspend fun update(transform: (List<DateEvent>) -> List<DateEvent>): Boolean {
+        var changed = false
+        context.dataStore.edit { preferences ->
+            val current: List<DateEvent> = Json.decodeFromString(preferences[EVENTS_KEY] ?: "[]")
+            val updated = transform(current)
+            if (updated != current) {
+                preferences[EVENTS_KEY] = Json.encodeToString(updated)
+                changed = true
+            }
+        }
+        return changed
+    }
 }
