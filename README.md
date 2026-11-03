@@ -31,7 +31,7 @@ Expressive for Android.
 
 ## Install
 
-Download `Dates-1.0.apk` from the [latest release](https://github.com/wylew/Dates/releases/latest)
+Download the `Dates-<version>.apk` file from the [latest release](https://github.com/wylew/Dates/releases/latest)
 and open it on your phone. Android will ask you to allow installs from the app you opened it
 with (your browser or file manager). Requires Android 8.0 or newer.
 
